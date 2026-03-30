@@ -21,17 +21,29 @@ from pydantic import BaseModel
 
 import scraper.db as db
 import scraper.settings as settings_mod
+import scraper.projects as projects_mod
 
 STATIC_DIR = Path(__file__).parent / "static"
 
 app = FastAPI(title="Lead Manager", docs_url=None, redoc_url=None)
 
-# ─── Active scrape jobs ────────────────────────────────────────────────────
+# ─── Active project + DB helper ──────────────────────────────────────────────
 
-_jobs: dict[str, dict] = {}  # job_id -> {queue, done, counts}
+_active_project_id: str = projects_mod.get_active_id()
 
 
-# ─── Models ───────────────────────────────────────────────────────────────
+def _db() -> db.Database:
+    """Return the Database instance for the currently active project."""
+    return db.get_instance(projects_mod.get_db_path(_active_project_id))
+
+
+# ─── Job tracking ─────────────────────────────────────────────────────────────
+
+_jobs: dict[str, dict] = {}
+_email_jobs: dict[str, dict] = {}
+
+
+# ─── Models ───────────────────────────────────────────────────────────────────
 
 class ScrapeRequest(BaseModel):
     niche: str
@@ -51,11 +63,80 @@ class EmailCampaignRequest(BaseModel):
     auto_contacted: bool = True
 
 
-# ─── API Routes ───────────────────────────────────────────────────────────
+class ProjectCreateRequest(BaseModel):
+    name: str
+    color: str = ""
+
+
+class ProjectUpdateRequest(BaseModel):
+    name: str | None = None
+    color: str | None = None
+
+
+class EnvFileRequest(BaseModel):
+    content: str
+    project_id: str | None = None
+
+
+# ─── Projects ─────────────────────────────────────────────────────────────────
+
+@app.get("/api/projects")
+def list_projects():
+    projects = projects_mod.list_projects()
+    # Annotate each with lead count
+    result = []
+    for p in projects:
+        d = db.get_instance(projects_mod.get_db_path(p["id"])).stats()
+        p["lead_count"] = d.get("total", 0)
+        p["active"] = p["id"] == _active_project_id
+        result.append(p)
+    return result
+
+
+@app.post("/api/projects")
+def create_project(body: ProjectCreateRequest):
+    global _active_project_id
+    project = projects_mod.create_project(body.name.strip(), body.color)
+    # Auto-activate the new project
+    _active_project_id = projects_mod.set_active(project["id"])
+    return {**project, "active": True, "lead_count": 0}
+
+
+@app.put("/api/projects/{project_id}")
+def update_project(project_id: str, body: ProjectUpdateRequest):
+    p = projects_mod.update_project(project_id, name=body.name, color=body.color)
+    if not p:
+        raise HTTPException(404, "Project not found")
+    return p
+
+
+@app.delete("/api/projects/{project_id}")
+def delete_project(project_id: str):
+    global _active_project_id
+    try:
+        projects_mod.delete_project(project_id)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    if _active_project_id == project_id:
+        _active_project_id = "default"
+    return {"ok": True}
+
+
+@app.post("/api/projects/{project_id}/activate")
+def activate_project(project_id: str):
+    global _active_project_id
+    try:
+        _active_project_id = projects_mod.set_active(project_id)
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+    return {"active": _active_project_id}
+
+
+# ─── Stats + Leads ────────────────────────────────────────────────────────────
 
 @app.get("/api/stats")
 def get_stats():
-    return db.stats()
+    return _db().stats()
 
 
 @app.get("/api/leads")
@@ -66,18 +147,16 @@ def get_leads(
     has_phone: bool = False,
     order_by: str = "updated_at DESC",
 ):
-    return db.fetch_all(
-        search=search,
-        status=status,
-        has_email=has_email,
-        has_phone=has_phone,
+    return _db().fetch_all(
+        search=search, status=status,
+        has_email=has_email, has_phone=has_phone,
         order_by=order_by,
     )
 
 
 @app.get("/api/leads/{lead_id}")
 def get_lead(lead_id: int):
-    lead = db.fetch_by_id(lead_id)
+    lead = _db().fetch_by_id(lead_id)
     if not lead:
         raise HTTPException(404, "Lead not found")
     return lead
@@ -85,26 +164,27 @@ def get_lead(lead_id: int):
 
 @app.put("/api/leads/{lead_id}")
 def update_lead(lead_id: int, body: UpdateLeadRequest):
+    d = _db()
     if body.status is not None:
-        db.update_status(lead_id, body.status)
+        d.update_status(lead_id, body.status)
     if body.notes is not None:
-        db.update_notes(lead_id, body.notes)
-    return db.fetch_by_id(lead_id)
+        d.update_notes(lead_id, body.notes)
+    return d.fetch_by_id(lead_id)
 
 
 @app.delete("/api/leads/{lead_id}")
 def delete_lead(lead_id: int):
-    db.delete(lead_id)
+    _db().delete(lead_id)
     return {"ok": True}
 
 
 @app.delete("/api/leads")
 def delete_leads(ids: list[int] = Query(...)):
-    db.delete_many(ids)
+    _db().delete_many(ids)
     return {"ok": True, "deleted": len(ids)}
 
 
-# ─── Scrape ───────────────────────────────────────────────────────────────
+# ─── Scrape ───────────────────────────────────────────────────────────────────
 
 @app.post("/api/scrape")
 def start_scrape(body: ScrapeRequest, background_tasks: BackgroundTasks):
@@ -113,11 +193,13 @@ def start_scrape(body: ScrapeRequest, background_tasks: BackgroundTasks):
     _jobs[job_id] = {"queue": q, "done": False, "counts": {
         "discovered": 0, "saved_new": 0, "merged": 0,
     }}
-    background_tasks.add_task(_run_scrape, job_id, body.niche, body.location, body.max_leads)
+    # Capture current project DB at job creation time
+    project_db = _db()
+    background_tasks.add_task(_run_scrape, job_id, body.niche, body.location, body.max_leads, project_db)
     return {"job_id": job_id}
 
 
-def _run_scrape(job_id: str, niche: str, location: str, max_leads: int):
+def _run_scrape(job_id: str, niche: str, location: str, max_leads: int, project_db: db.Database):
     job = _jobs[job_id]
     q: Queue = job["queue"]
 
@@ -133,7 +215,7 @@ def _run_scrape(job_id: str, niche: str, location: str, max_leads: int):
         extractor = ContactExtractor(default_region="HU")
 
         emit("log", level="info", msg=f"Starting deep search: '{niche}' in '{location}'")
-        emit("log", level="dim", msg=f"Database: {db.DB_PATH}")
+        emit("log", level="dim",  msg=f"Database: {project_db.path}")
 
         def on_progress(msg: str):
             emit("log", level="info", msg=msg)
@@ -151,17 +233,17 @@ def _run_scrape(job_id: str, niche: str, location: str, max_leads: int):
 
         for i, stub in enumerate(stubs):
             if not _jobs.get(job_id, {}).get("running", True) is False:
-                pass  # continue unless explicitly stopped
+                pass
             if not stub.website:
                 continue
 
             key = stub.canonical_key()
-            if db.exists(key):
-                db.upsert(stub)
+            if project_db.exists(key):
+                project_db.upsert(stub)
                 job["counts"]["merged"] += 1
             else:
                 enriched = extractor.enrich_lead(stub, lambda url: fetch(url, client=client))
-                was_new, _ = db.upsert(enriched)
+                was_new, _ = project_db.upsert(enriched)
                 if was_new:
                     job["counts"]["saved_new"] += 1
                     if enriched.has_contacts():
@@ -171,8 +253,7 @@ def _run_scrape(job_id: str, niche: str, location: str, max_leads: int):
                              msg=f"+ {enriched.company_name or enriched.website[:45]:45} {email}")
                         emit("lead", data={
                             "company_name": enriched.company_name,
-                            "email": email,
-                            "phone": phone,
+                            "email": email, "phone": phone,
                         })
                     else:
                         emit("log", level="dim", msg=f"  {stub.website[:60]}")
@@ -185,18 +266,17 @@ def _run_scrape(job_id: str, niche: str, location: str, max_leads: int):
                      saved_new=c["saved_new"], merged=c["merged"])
 
         c = job["counts"]
-        s = db.stats()
+        s = project_db.stats()
         emit("log", level="success", msg="═══ Scrape Complete ═══")
         emit("log", level="info",    msg=f"  New leads: {c['saved_new']}")
         emit("log", level="info",    msg=f"  Merged:    {c['merged']}")
         emit("log", level="info",    msg=f"  DB Total:  {s.get('total', 0)} leads")
-        emit("progress", discovered=c["discovered"], saved_new=c["saved_new"],
-             merged=c["merged"])
+        emit("progress", discovered=c["discovered"], saved_new=c["saved_new"], merged=c["merged"])
         emit("done", counts=c, stats=s)
 
     except Exception as e:
         emit("log", level="error", msg=f"Error: {e}")
-        emit("done", counts=job["counts"], stats=db.stats())
+        emit("done", counts=job["counts"], stats=project_db.stats())
     finally:
         job["done"] = True
 
@@ -221,14 +301,8 @@ async def scrape_stream(job_id: str):
                 yield "data: {\"type\":\"ping\"}\n\n"
                 await asyncio.sleep(0.15)
 
-    return StreamingResponse(
-        generate(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no",
-        },
-    )
+    return StreamingResponse(generate(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
 @app.get("/api/scrape/{job_id}/stop")
@@ -238,16 +312,21 @@ def stop_scrape(job_id: str):
     return {"ok": True}
 
 
-# ─── Settings ────────────────────────────────────────────────────────────
+# ─── Settings ─────────────────────────────────────────────────────────────────
 
 @app.get("/api/settings")
-def get_settings():
-    return settings_mod.get_for_ui()
+def get_settings(project_id: str | None = None):
+    pid = project_id or _active_project_id
+    return settings_mod.get_for_ui(pid)
 
 
 @app.put("/api/settings")
-def update_settings(body: dict):
-    return settings_mod.save(body)
+def update_settings(body: dict, project_id: str | None = None):
+    pid = project_id or _active_project_id
+    scope = body.pop("_scope", "global")  # "global" or "project"
+    if scope == "project" and pid and pid != "default":
+        return settings_mod.save(body, project_id=pid)
+    return settings_mod.save(body, project_id=None)
 
 
 @app.post("/api/settings/test-smtp")
@@ -256,10 +335,26 @@ def test_smtp():
     return test_connection()
 
 
-# ─── Email campaign ───────────────────────────────────────────────────────
+# ─── .env file editing ────────────────────────────────────────────────────────
 
-_email_jobs: dict[str, dict] = {}
+@app.get("/api/env")
+def get_env(project_id: str | None = None):
+    pid = project_id if project_id is not None else None
+    return {
+        "global":  settings_mod.read_env_file(None),
+        "project": settings_mod.read_env_file(pid) if pid and pid != "default" else "",
+        "project_id": pid or "default",
+    }
 
+
+@app.put("/api/env")
+def save_env(body: EnvFileRequest):
+    pid = body.project_id if body.project_id and body.project_id != "default" else None
+    settings_mod.write_env_file(body.content, project_id=pid)
+    return {"ok": True}
+
+
+# ─── Email campaign ───────────────────────────────────────────────────────────
 
 @app.post("/api/email/send")
 def start_email_campaign(body: EmailCampaignRequest, background_tasks: BackgroundTasks):
@@ -267,14 +362,16 @@ def start_email_campaign(body: EmailCampaignRequest, background_tasks: Backgroun
     q: Queue = Queue()
     _email_jobs[job_id] = {"queue": q, "done": False, "stop": [False],
                            "counts": {"sent": 0, "failed": 0, "skipped": 0}}
+    project_db = _db()
     background_tasks.add_task(
-        _run_email_campaign, job_id, body.lead_ids, body.subject, body.body, body.auto_contacted
+        _run_email_campaign, job_id, body.lead_ids, body.subject,
+        body.body, body.auto_contacted, project_db,
     )
     return {"job_id": job_id}
 
 
 def _run_email_campaign(job_id: str, lead_ids: list[int], subject: str,
-                        body: str, auto_contacted: bool):
+                        body: str, auto_contacted: bool, project_db: db.Database):
     job = _email_jobs[job_id]
     q: Queue = job["queue"]
     stop_flag: list[bool] = job["stop"]
@@ -285,7 +382,7 @@ def _run_email_campaign(job_id: str, lead_ids: list[int], subject: str,
     try:
         from scraper.email.smtp import send_campaign
 
-        leads = [db.fetch_by_id(lid) for lid in lead_ids]
+        leads = [project_db.fetch_by_id(lid) for lid in lead_ids]
         leads = [l for l in leads if l]
 
         emit(type="log", level="info",
@@ -298,16 +395,16 @@ def _run_email_campaign(job_id: str, lead_ids: list[int], subject: str,
                 emit(type="log", level="success",
                      msg=f"✓ [{ev['index']}/{ev['total']}] {ev.get('company','')[:40]} → {ev.get('to','')}")
                 emit(type="progress", **job["counts"], total=len(leads))
-                db.log_email(ev["lead_id"], subject, ev.get("to", ""), "sent")
+                project_db.log_email(ev["lead_id"], subject, ev.get("to", ""), "sent")
                 if auto_contacted:
-                    db.update_status(ev["lead_id"], "contacted")
-                db.update_last_emailed(ev["lead_id"])
+                    project_db.update_status(ev["lead_id"], "contacted")
+                project_db.update_last_emailed(ev["lead_id"])
             elif t == "failed":
                 job["counts"]["failed"] += 1
                 emit(type="log", level="error",
                      msg=f"✗ [{ev['index']}/{ev['total']}] {ev.get('company','')[:40]} — {ev.get('error','')}")
                 emit(type="progress", **job["counts"], total=len(leads))
-                db.log_email(ev["lead_id"], subject, ev.get("to", ""), "failed", ev.get("error", ""))
+                project_db.log_email(ev["lead_id"], subject, ev.get("to", ""), "failed", ev.get("error", ""))
             elif t == "skipped":
                 job["counts"]["skipped"] += 1
                 emit(type="log", level="dim",
@@ -365,61 +462,55 @@ def stop_email_job(job_id: str):
 
 @app.get("/api/email/logs")
 def get_email_logs(lead_id: int | None = None):
-    return db.fetch_email_logs(lead_id=lead_id)
+    return _db().fetch_email_logs(lead_id=lead_id)
 
 
-# ─── Export ───────────────────────────────────────────────────────────────
+# ─── Export ───────────────────────────────────────────────────────────────────
 
 @app.get("/api/export/csv")
-def export_csv(
-    search: str = "",
-    status: str = "",
-    has_email: bool = False,
-    has_phone: bool = False,
-):
-    from scraper.models import Lead
+def export_csv(search: str = "", status: str = "",
+               has_email: bool = False, has_phone: bool = False):
     from scraper.export.csv_exporter import export_csv as _export_csv
     from datetime import datetime
     import tempfile
-
-    rows = db.fetch_all(search=search, status=status,
-                        has_email=has_email, has_phone=has_phone)
+    rows = _db().fetch_all(search=search, status=status,
+                           has_email=has_email, has_phone=has_phone)
     leads = [_row_to_lead(r) for r in rows]
-
     tmp = tempfile.NamedTemporaryFile(suffix=".csv", delete=False)
     _export_csv(leads, tmp.name)
-
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    return FileResponse(
-        tmp.name,
-        media_type="text/csv",
-        filename=f"leads_{ts}.csv",
-    )
+    return FileResponse(tmp.name, media_type="text/csv", filename=f"leads_{ts}.csv")
 
 
 @app.get("/api/export/excel")
-def export_excel(
-    search: str = "",
-    status: str = "",
-    has_email: bool = False,
-    has_phone: bool = False,
-):
+def export_excel(search: str = "", status: str = "",
+                 has_email: bool = False, has_phone: bool = False):
     from scraper.export.excel_exporter import export_excel as _export_excel
     from datetime import datetime
     import tempfile
-
-    rows = db.fetch_all(search=search, status=status,
-                        has_email=has_email, has_phone=has_phone)
+    rows = _db().fetch_all(search=search, status=status,
+                           has_email=has_email, has_phone=has_phone)
     leads = [_row_to_lead(r) for r in rows]
-
     tmp = tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False)
     _export_excel(leads, tmp.name)
-
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     return FileResponse(
         tmp.name,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         filename=f"leads_{ts}.xlsx",
+    )
+
+
+@app.get("/api/export/json")
+def export_json(search: str = "", status: str = "",
+                has_email: bool = False, has_phone: bool = False):
+    from datetime import datetime
+    rows = _db().fetch_all(search=search, status=status,
+                           has_email=has_email, has_phone=has_phone)
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    return JSONResponse(
+        content=rows,
+        headers={"Content-Disposition": f"attachment; filename=leads_{ts}.json"},
     )
 
 
@@ -433,35 +524,18 @@ def _row_to_lead(r: dict):
     )
 
 
-@app.get("/api/export/json")
-def export_json(
-    search: str = "",
-    status: str = "",
-    has_email: bool = False,
-    has_phone: bool = False,
-):
-    from datetime import datetime
-    rows = db.fetch_all(search=search, status=status,
-                        has_email=has_email, has_phone=has_phone)
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    return JSONResponse(
-        content=rows,
-        headers={"Content-Disposition": f"attachment; filename=leads_{ts}.json"},
-    )
-
-
-# ─── Import ───────────────────────────────────────────────────────────────
+# ─── Import ───────────────────────────────────────────────────────────────────
 
 def _import_rows(rows: list[dict]) -> dict:
-    """Upsert a list of dicts into the DB. Returns summary counts."""
-    from scraper.models import Lead
     added = merged = skipped = 0
+    from scraper.models import Lead
+    d = _db()
     for row in rows:
         website = (row.get("website") or row.get("Website") or "").strip()
         if not website:
             skipped += 1
             continue
-        # Normalise field names (support both lowercase and Title Case headers)
+
         def _get(*keys):
             for k in keys:
                 v = row.get(k)
@@ -476,9 +550,7 @@ def _import_rows(rows: list[dict]) -> dict:
 
         lead = Lead(
             company_name=_get("company_name", "Company Name", "company", "Company"),
-            website=website,
-            emails=emails,
-            phones=phones,
+            website=website, emails=emails, phones=phones,
             address=_get("address", "Address"),
             city=_get("city", "City"),
             country=_get("country", "Country"),
@@ -486,7 +558,7 @@ def _import_rows(rows: list[dict]) -> dict:
             sources=["import"],
             confidence=float(row.get("confidence", row.get("Confidence", 0.5)) or 0.5),
         )
-        was_new, _ = db.upsert(lead)
+        was_new, _ = d.upsert(lead)
         if was_new:
             added += 1
         else:
@@ -496,19 +568,15 @@ def _import_rows(rows: list[dict]) -> dict:
 
 @app.post("/api/import/csv")
 async def import_csv(file: UploadFile = File(...)):
-    import csv
-    import io
+    import csv as _csv
     content = await file.read()
     text = content.decode("utf-8-sig", errors="replace")
-    reader = csv.DictReader(io.StringIO(text))
-    rows = list(reader)
-    result = _import_rows(rows)
-    return result
+    rows = list(_csv.DictReader(io.StringIO(text)))
+    return _import_rows(rows)
 
 
 @app.post("/api/import/excel")
 async def import_excel(file: UploadFile = File(...)):
-    import io
     try:
         import openpyxl
     except ImportError:
@@ -518,25 +586,21 @@ async def import_excel(file: UploadFile = File(...)):
     ws = wb.active
     rows_iter = ws.iter_rows(values_only=True)
     headers = [str(h).strip() if h is not None else "" for h in next(rows_iter, [])]
-    rows = []
-    for row in rows_iter:
-        rows.append({headers[i]: (str(v).strip() if v is not None else "") for i, v in enumerate(row) if i < len(headers)})
-    result = _import_rows(rows)
-    return result
+    rows = [{headers[i]: (str(v).strip() if v is not None else "")
+             for i, v in enumerate(row) if i < len(headers)} for row in rows_iter]
+    return _import_rows(rows)
 
 
 @app.post("/api/import/json")
 async def import_json_file(file: UploadFile = File(...)):
-    import json as _json
     content = await file.read()
-    rows = _json.loads(content)
+    rows = json.loads(content)
     if not isinstance(rows, list):
         raise HTTPException(400, "JSON must be an array of lead objects")
-    result = _import_rows(rows)
-    return result
+    return _import_rows(rows)
 
 
-# ─── Static files + SPA fallback ─────────────────────────────────────────
+# ─── Static files + SPA fallback ─────────────────────────────────────────────
 
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
@@ -546,7 +610,7 @@ def spa_fallback(full_path: str):
     return FileResponse(str(STATIC_DIR / "index.html"))
 
 
-# ─── Run ──────────────────────────────────────────────────────────────────
+# ─── Run ──────────────────────────────────────────────────────────────────────
 
 def run_server(host: str = "127.0.0.1", port: int = 7337, open_browser: bool = True):
     import warnings
@@ -555,7 +619,7 @@ def run_server(host: str = "127.0.0.1", port: int = 7337, open_browser: bool = T
     urllib3.disable_warnings()
 
     if open_browser:
-        import threading, time, webbrowser
+        import time, webbrowser
         def _open():
             time.sleep(1.2)
             webbrowser.open(f"http://{host}:{port}")

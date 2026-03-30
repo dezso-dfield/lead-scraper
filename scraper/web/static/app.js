@@ -13,7 +13,15 @@ const state = {
   statusFilter: '',
   hasEmail: false,
   hasPhone: false,
+  projects: [],
+  activeProjectId: 'default',
+  newProjectColor: '#6366f1',
 };
+
+const PROJECT_COLORS = [
+  '#6366f1','#22c55e','#f59e0b','#ef4444',
+  '#06b6d4','#a855f7','#ec4899','#14b8a6',
+];
 
 /* ── API helpers ─────────────────────────────────────────────────────── */
 async function api(method, path, body) {
@@ -30,8 +38,17 @@ const DEL  = (p)    => api('DELETE', p);
 
 /* ── Init ────────────────────────────────────────────────────────────── */
 document.addEventListener('DOMContentLoaded', () => {
+  loadProjects();
   loadLeads();
   setInterval(loadStats, 10000);
+
+  // Close project dropdown when clicking outside
+  document.addEventListener('click', e => {
+    if (!document.getElementById('project-switcher').contains(e.target) &&
+        !document.getElementById('project-dropdown').contains(e.target)) {
+      closeProjectDropdown();
+    }
+  });
 
   // Search
   const searchEl = document.getElementById('search');
@@ -125,6 +142,12 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   document.getElementById('import-modal').addEventListener('click', e => {
     if (e.target === e.currentTarget) closeImportModal();
+  });
+  document.getElementById('new-project-modal').addEventListener('click', e => {
+    if (e.target === e.currentTarget) closeNewProjectModal();
+  });
+  document.getElementById('new-project-name').addEventListener('keydown', e => {
+    if (e.key === 'Enter') createProject();
   });
 });
 
@@ -852,13 +875,17 @@ function insertMergeTag(tag) {
 /* ── Settings ────────────────────────────────────────────────────────── */
 async function openSettingsModal() {
   try {
-    const s = await GET('/api/settings');
+    const [s, envData] = await Promise.all([
+      GET(`/api/settings?project_id=${state.activeProjectId}`),
+      GET(`/api/env?project_id=${state.activeProjectId}`),
+    ]);
+
     document.getElementById('s-smtp-host').value   = s.smtp_host  || '';
     document.getElementById('s-smtp-port').value   = s.smtp_port  || 587;
     document.getElementById('s-smtp-ssl').checked  = !!s.smtp_ssl;
     document.getElementById('s-smtp-starttls').checked = s.smtp_starttls !== false;
     document.getElementById('s-smtp-user').value   = s.smtp_user  || '';
-    document.getElementById('s-smtp-password').value = '';  // never pre-fill password
+    document.getElementById('s-smtp-password').value = '';
     document.getElementById('s-from-name').value   = s.from_name  || '';
     document.getElementById('s-from-email').value  = s.from_email || '';
     document.getElementById('s-delay-min').value   = s.delay_min  ?? 5;
@@ -866,25 +893,33 @@ async function openSettingsModal() {
     document.getElementById('s-daily-limit').value = s.daily_limit ?? 500;
     document.getElementById('s-unsubscribe-footer').checked = s.unsubscribe_footer !== false;
 
+    // Env files
+    document.getElementById('s-global-env').value  = envData.global  || '';
+    document.getElementById('s-project-env').value = envData.project || '';
+    const isDefault = state.activeProjectId === 'default';
+    document.getElementById('s-project-env-wrap').style.opacity = isDefault ? '0.4' : '1';
+    document.getElementById('s-project-env-label').textContent =
+      isDefault ? '(switch to a non-default project to set project vars)' :
+      `(~/.scraper/projects/${state.activeProjectId}/.env)`;
+
     // Disable env-locked fields
     const locked = s._env_locked || [];
-    const fieldMap = {
-      smtp_host: 's-smtp-host', smtp_port: 's-smtp-port',
-      smtp_user: 's-smtp-user', smtp_password: 's-smtp-password',
-      from_name: 's-from-name', from_email: 's-from-email',
-    };
+    const fieldMap = { smtp_host:'s-smtp-host', smtp_port:'s-smtp-port',
+      smtp_user:'s-smtp-user', smtp_password:'s-smtp-password',
+      from_name:'s-from-name', from_email:'s-from-email' };
+    Object.values(fieldMap).forEach(id => {
+      const el = document.getElementById(id);
+      if (el) { el.disabled = false; el.title = ''; }
+    });
     locked.forEach(key => {
       const el = document.getElementById(fieldMap[key]);
       if (el) { el.disabled = true; el.title = 'Set via environment variable'; }
     });
     document.getElementById('settings-env-notice').style.display = locked.length ? '' : 'none';
-
-    // Reset test result
     document.getElementById('smtp-test-result').textContent = '';
   } catch(e) {
     toast('Failed to load settings', 'error');
   }
-  // Switch to first tab
   document.querySelector('.settings-tab[data-tab="smtp"]').click();
   document.getElementById('settings-modal').classList.add('open');
 }
@@ -914,10 +949,20 @@ async function saveSettings() {
     delay_max:     parseFloat(document.getElementById('s-delay-max').value) || 15,
     daily_limit:   parseInt(document.getElementById('s-daily-limit').value) || 500,
     unsubscribe_footer: document.getElementById('s-unsubscribe-footer').checked,
+    _scope: 'global',
   };
   if (pw && !pw.includes('•')) updates.smtp_password = pw;
+
+  const globalEnv  = document.getElementById('s-global-env').value;
+  const projectEnv = document.getElementById('s-project-env').value;
+  const isDefault  = state.activeProjectId === 'default';
+
   try {
-    await api('PUT', '/api/settings', updates);
+    await Promise.all([
+      api('PUT', '/api/settings', updates),
+      api('PUT', '/api/env', { content: globalEnv, project_id: null }),
+      ...(isDefault ? [] : [api('PUT', '/api/env', { content: projectEnv, project_id: state.activeProjectId })]),
+    ]);
     toast('Settings saved', 'success');
     closeSettingsModal();
   } catch(e) {
@@ -925,6 +970,117 @@ async function saveSettings() {
   }
 }
 
+/* ── Projects ────────────────────────────────────────────────────────── */
+async function loadProjects() {
+  try {
+    state.projects = await GET('/api/projects');
+    const active = state.projects.find(p => p.active) || state.projects[0];
+    if (active) {
+      state.activeProjectId = active.id;
+      document.getElementById('project-name').textContent = active.name;
+      document.getElementById('project-dot').style.background = active.color;
+    }
+    renderProjectList();
+  } catch(e) {}
+}
+
+function renderProjectList() {
+  const list = document.getElementById('project-list');
+  list.innerHTML = state.projects.map(p => `
+    <div class="project-item ${p.active ? 'active' : ''}" onclick="switchProject('${esc(p.id)}')">
+      <span class="project-dot" style="background:${esc(p.color)}"></span>
+      <div class="project-item-info">
+        <span class="project-item-name">${esc(p.name)}</span>
+        <span class="project-item-count">${p.lead_count ?? 0} leads</span>
+      </div>
+      ${p.id !== 'default' ? `<button class="project-delete" onclick="deleteProject(event,'${esc(p.id)}')" title="Delete project">✕</button>` : ''}
+    </div>
+  `).join('');
+}
+
+async function switchProject(projectId) {
+  if (projectId === state.activeProjectId) { closeProjectDropdown(); return; }
+  try {
+    await api('POST', `/api/projects/${projectId}/activate`, {});
+    state.activeProjectId = projectId;
+    closeProjectDropdown();
+    state.selectedIds.clear();
+    state.selected = null;
+    await loadProjects();
+    await loadLeads();
+    toast(`Switched to project`, 'success');
+  } catch(e) {
+    toast('Failed to switch project', 'error');
+  }
+}
+
+async function deleteProject(event, projectId) {
+  event.stopPropagation();
+  if (!confirm(`Delete project? The leads database will be kept on disk.`)) return;
+  try {
+    await DEL(`/api/projects/${projectId}`);
+    toast('Project deleted', 'success');
+    await loadProjects();
+    if (state.activeProjectId === projectId) {
+      state.activeProjectId = 'default';
+      await loadLeads();
+    }
+  } catch(e) {
+    toast('Failed to delete project: ' + e.message, 'error');
+  }
+}
+
+function toggleProjectDropdown(event) {
+  event.stopPropagation();
+  const dd = document.getElementById('project-dropdown');
+  dd.classList.toggle('open');
+}
+
+function closeProjectDropdown() {
+  document.getElementById('project-dropdown').classList.remove('open');
+}
+
+function openNewProjectModal() {
+  state.newProjectColor = PROJECT_COLORS[state.projects.length % PROJECT_COLORS.length];
+  document.getElementById('new-project-name').value = '';
+  // Render color picker
+  const cp = document.getElementById('color-picker');
+  cp.innerHTML = PROJECT_COLORS.map(c =>
+    `<button class="color-swatch ${c === state.newProjectColor ? 'selected' : ''}"
+       style="background:${c}" onclick="selectProjectColor('${c}')" title="${c}"></button>`
+  ).join('');
+  document.getElementById('new-project-modal').classList.add('open');
+  setTimeout(() => document.getElementById('new-project-name').focus(), 50);
+}
+
+function closeNewProjectModal() {
+  document.getElementById('new-project-modal').classList.remove('open');
+}
+
+function selectProjectColor(color) {
+  state.newProjectColor = color;
+  document.querySelectorAll('.color-swatch').forEach(b => {
+    b.classList.toggle('selected', b.style.background === color || b.style.backgroundColor === color);
+  });
+}
+
+async function createProject() {
+  const name = document.getElementById('new-project-name').value.trim();
+  if (!name) { document.getElementById('new-project-name').focus(); return; }
+  try {
+    await api('POST', '/api/projects', { name, color: state.newProjectColor });
+    closeNewProjectModal();
+    toast(`Project "${name}" created`, 'success');
+    state.selectedIds.clear();
+    state.selected = null;
+    await loadProjects();
+    await loadLeads();
+  } catch(e) {
+    toast('Failed to create project: ' + e.message, 'error');
+  }
+}
+
+/* ── Settings — env tab ──────────────────────────────────────────────── */
 async function testSmtp() {
   const btn = document.getElementById('btn-test-smtp');
   const result = document.getElementById('smtp-test-result');

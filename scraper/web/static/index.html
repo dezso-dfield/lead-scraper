@@ -22,6 +22,23 @@
       </svg>
       Lead Manager
     </div>
+
+    <!-- ── Project Switcher ──────────────────────────────────────────── -->
+    <div class="project-switcher" id="project-switcher" onclick="toggleProjectDropdown(event)">
+      <span class="project-dot" id="project-dot"></span>
+      <span class="project-name" id="project-name">Default</span>
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+    </div>
+    <div class="project-dropdown" id="project-dropdown">
+      <div class="project-list" id="project-list"></div>
+      <div class="project-dropdown-footer">
+        <button class="btn primary" style="width:100%" onclick="openNewProjectModal(); closeProjectDropdown()">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          New Project
+        </button>
+      </div>
+    </div>
+
     <div id="stats"></div>
     <div class="header-actions">
       <div class="btn-group">
@@ -309,6 +326,7 @@
       <div class="settings-tabs">
         <button class="settings-tab active" data-tab="smtp" onclick="switchTab(this)">SMTP</button>
         <button class="settings-tab" data-tab="sending" onclick="switchTab(this)">Sending</button>
+        <button class="settings-tab" data-tab="env" onclick="switchTab(this)">Environment</button>
       </div>
       <div class="settings-tab-body" id="tab-smtp">
         <div class="settings-grid">
@@ -353,6 +371,23 @@
           Some fields are set via environment variables and cannot be edited here.
         </div>
       </div>
+      <div class="settings-tab-body" id="tab-env" style="display:none">
+        <div style="padding:0 20px 20px">
+          <p style="color:var(--text-muted);font-size:12px;margin-bottom:14px">
+            Variables here override settings. Format: <code style="font-family:var(--font-mono);color:var(--cyan)">KEY=value</code> one per line.
+            Project vars override global ones. Real OS environment variables always take priority.
+          </p>
+          <div class="field">
+            <label>Global .env <span style="font-size:10px;color:var(--text-muted)">(~/.scraper/.env)</span></label>
+            <textarea id="s-global-env" class="env-textarea" placeholder="SMTP_HOST=smtp.gmail.com&#10;SMTP_PORT=587&#10;SMTP_USER=you@gmail.com&#10;SMTP_PASSWORD=yourpassword"></textarea>
+          </div>
+          <div class="field" style="margin-top:14px" id="s-project-env-wrap">
+            <label>Project .env <span id="s-project-env-label" style="font-size:10px;color:var(--text-muted)"></span></label>
+            <textarea id="s-project-env" class="env-textarea" placeholder="# Project-specific overrides&#10;SMTP_USER=project@company.com"></textarea>
+          </div>
+        </div>
+      </div>
+
       <div class="settings-tab-body" id="tab-sending" style="display:none">
         <div class="settings-grid">
           <div class="field">
@@ -380,6 +415,30 @@
     <div class="modal-footer">
       <button class="btn" onclick="closeSettingsModal()">Cancel</button>
       <button class="btn primary" onclick="saveSettings()">Save Settings</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── New Project Modal ──────────────────────────────────────────────── -->
+<div class="modal-overlay" id="new-project-modal">
+  <div class="modal" style="width:min(420px,100%)">
+    <div class="modal-header">
+      <span class="modal-title">New Project</span>
+      <button class="modal-close" onclick="closeNewProjectModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="field">
+        <label>Project Name</label>
+        <input type="text" id="new-project-name" placeholder="e.g. Budapest Events, AI Companies…" autocomplete="off">
+      </div>
+      <div class="field" style="margin-top:14px">
+        <label>Color</label>
+        <div class="color-picker" id="color-picker"></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeNewProjectModal()">Cancel</button>
+      <button class="btn primary" onclick="createProject()">Create Project</button>
     </div>
   </div>
 </div>
