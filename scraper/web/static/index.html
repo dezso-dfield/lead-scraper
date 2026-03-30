@@ -46,6 +46,9 @@
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
         New Scrape
       </button>
+      <button class="btn icon-btn" id="btn-settings" title="Settings">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      </button>
     </div>
   </header>
 
@@ -88,6 +91,7 @@
     <table id="leads-table">
       <thead>
         <tr>
+          <th class="col-check"><input type="checkbox" id="select-all" title="Select all" onclick="toggleSelectAll(this)"></th>
           <th data-col="id">#</th>
           <th data-col="company_name">Company <span class="sort-icon">↕</span></th>
           <th data-col="email">Email</th>
@@ -103,6 +107,18 @@
     </table>
   </div>
 
+  <!-- ── Selection bar ────────────────────────────────────────────── -->
+  <div class="selection-bar" id="selection-bar">
+    <span id="selection-count">0 selected</span>
+    <div style="display:flex;gap:8px;align-items:center">
+      <button class="btn" onclick="deselectAll()">Deselect All</button>
+      <button class="btn primary" id="btn-email-selected" onclick="openEmailModal()">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+        Send Email
+      </button>
+    </div>
+  </div>
+
   <!-- ── Shortcut bar ───────────────────────────────────────────────── -->
   <div class="shortcut-bar">
     <span><kbd>N</kbd> New Scrape</span>
@@ -113,6 +129,7 @@
     <span><kbd>Del</kbd> Delete</span>
     <span><kbd>/</kbd> Search</span>
     <span><kbd>E</kbd> Export CSV</span>
+    <span><kbd>M</kbd> Email Selected</span>
   </div>
 
 </div><!-- #app -->
@@ -219,6 +236,150 @@
         Open Website
       </button>
       <button class="btn primary" id="btn-detail-save" onclick="saveDetail()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Email Compose Modal ────────────────────────────────────────────── -->
+<div class="modal-overlay" id="email-modal">
+  <div class="modal email-modal-inner">
+    <div class="modal-header">
+      <span class="modal-title">Send Email Campaign</span>
+      <button class="modal-close" onclick="closeEmailModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="email-compose-section">
+        <div class="email-to-row">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+          <span id="email-to-label">0 leads selected</span>
+        </div>
+        <div class="field" style="margin-top:14px">
+          <label>Subject</label>
+          <input type="text" id="email-subject" placeholder="e.g. Collaboration opportunity — {{company_name}}" autocomplete="off">
+        </div>
+        <div class="field" style="margin-top:10px">
+          <label>Message</label>
+          <textarea id="email-body" class="email-textarea" placeholder="Hi {{first_name}},&#10;&#10;I came across {{company_name}} and wanted to reach out…"></textarea>
+        </div>
+        <div class="merge-tags">
+          <span style="color:var(--text-muted);font-size:11px">Merge tags:</span>
+          <span class="merge-tag" onclick="insertMergeTag('{{company_name}}')">{{company_name}}</span>
+          <span class="merge-tag" onclick="insertMergeTag('{{first_name}}')">{{first_name}}</span>
+          <span class="merge-tag" onclick="insertMergeTag('{{website}}')">{{website}}</span>
+          <span class="merge-tag" onclick="insertMergeTag('{{city}}')">{{city}}</span>
+          <span class="merge-tag" onclick="insertMergeTag('{{niche}}')">{{niche}}</span>
+        </div>
+        <div class="field" style="margin-top:12px;display:flex;align-items:center;gap:8px">
+          <input type="checkbox" id="email-auto-contacted" checked style="width:auto">
+          <label style="margin:0;text-transform:none;letter-spacing:0;font-size:13px;color:var(--text)">Mark leads as "Contacted" after sending</label>
+        </div>
+      </div>
+
+      <div id="email-progress-section" style="display:none">
+        <div class="progress-bar visible" style="margin-top:0">
+          <div class="progress-fill" id="email-progress-fill" style="width:0%"></div>
+        </div>
+        <div class="scrape-stats visible" id="email-stats">
+          <div class="scrape-stat"><label>Sent</label><span class="new" id="email-stat-sent">0</span></div>
+          <div class="scrape-stat"><label>Failed</label><span style="color:var(--red)" id="email-stat-failed">0</span></div>
+          <div class="scrape-stat"><label>Skipped</label><span class="merged" id="email-stat-skipped">0</span></div>
+        </div>
+        <div id="email-log" class="visible" style="display:flex;flex-direction:column;gap:0;margin-top:12px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);overflow-y:auto;max-height:220px;font-family:var(--font-mono);font-size:11.5px;padding:10px"></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" id="btn-email-close" onclick="closeEmailModal()">Cancel</button>
+      <button class="btn danger" id="btn-email-stop" style="display:none" onclick="stopEmailCampaign()">Stop</button>
+      <button class="btn primary" id="btn-email-send" onclick="sendEmailCampaign()">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+        Send Campaign
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Settings Modal ─────────────────────────────────────────────────── -->
+<div class="modal-overlay" id="settings-modal">
+  <div class="modal settings-modal-inner">
+    <div class="modal-header">
+      <span class="modal-title">Settings</span>
+      <button class="modal-close" onclick="closeSettingsModal()">✕</button>
+    </div>
+    <div class="modal-body" style="padding:0">
+      <div class="settings-tabs">
+        <button class="settings-tab active" data-tab="smtp" onclick="switchTab(this)">SMTP</button>
+        <button class="settings-tab" data-tab="sending" onclick="switchTab(this)">Sending</button>
+      </div>
+      <div class="settings-tab-body" id="tab-smtp">
+        <div class="settings-grid">
+          <div class="field full">
+            <label>SMTP Host</label>
+            <input type="text" id="s-smtp-host" placeholder="smtp.gmail.com" autocomplete="off">
+          </div>
+          <div class="field">
+            <label>Port</label>
+            <input type="number" id="s-smtp-port" value="587" min="1" max="65535">
+          </div>
+          <div class="field" style="display:flex;align-items:center;gap:10px;padding-top:20px">
+            <label style="display:flex;align-items:center;gap:8px;text-transform:none;letter-spacing:0;font-size:13px;color:var(--text);margin:0">
+              <input type="checkbox" id="s-smtp-ssl" style="width:auto"> SSL
+            </label>
+            <label style="display:flex;align-items:center;gap:8px;text-transform:none;letter-spacing:0;font-size:13px;color:var(--text);margin:0">
+              <input type="checkbox" id="s-smtp-starttls" checked style="width:auto"> STARTTLS
+            </label>
+          </div>
+          <div class="field full">
+            <label>Username</label>
+            <input type="email" id="s-smtp-user" placeholder="you@gmail.com" autocomplete="off">
+          </div>
+          <div class="field full">
+            <label>Password / App Password</label>
+            <input type="password" id="s-smtp-password" placeholder="Leave blank to keep existing" autocomplete="new-password">
+          </div>
+          <div class="field">
+            <label>From Name</label>
+            <input type="text" id="s-from-name" placeholder="Your Name or Company" autocomplete="off">
+          </div>
+          <div class="field">
+            <label>From Email</label>
+            <input type="email" id="s-from-email" placeholder="you@company.com" autocomplete="off">
+          </div>
+        </div>
+        <div style="padding:0 20px 16px">
+          <button class="btn" id="btn-test-smtp" onclick="testSmtp()">Test Connection</button>
+          <span id="smtp-test-result" style="margin-left:10px;font-size:12px"></span>
+        </div>
+        <div id="settings-env-notice" style="display:none;margin:0 20px 16px;padding:10px 12px;background:var(--yellow-dim);border:1px solid var(--yellow);border-radius:var(--radius);font-size:12px;color:#fbbf24">
+          Some fields are set via environment variables and cannot be edited here.
+        </div>
+      </div>
+      <div class="settings-tab-body" id="tab-sending" style="display:none">
+        <div class="settings-grid">
+          <div class="field">
+            <label>Min Delay (seconds)</label>
+            <input type="number" id="s-delay-min" value="5" min="1" max="3600" step="1">
+            <div class="field-hint">Minimum wait between emails</div>
+          </div>
+          <div class="field">
+            <label>Max Delay (seconds)</label>
+            <input type="number" id="s-delay-max" value="15" min="1" max="3600" step="1">
+            <div class="field-hint">Maximum wait between emails</div>
+          </div>
+          <div class="field">
+            <label>Daily Limit</label>
+            <input type="number" id="s-daily-limit" value="500" min="1" max="10000">
+            <div class="field-hint">Max emails per day</div>
+          </div>
+          <div class="field" style="display:flex;align-items:center;gap:8px;padding-top:20px">
+            <input type="checkbox" id="s-unsubscribe-footer" checked style="width:auto">
+            <label style="margin:0;text-transform:none;letter-spacing:0;font-size:13px;color:var(--text)">Add unsubscribe footer</label>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeSettingsModal()">Cancel</button>
+      <button class="btn primary" onclick="saveSettings()">Save Settings</button>
     </div>
   </div>
 </div>

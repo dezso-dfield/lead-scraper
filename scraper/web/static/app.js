@@ -2,9 +2,11 @@
 const state = {
   leads: [],
   filtered: [],
-  selected: null,        // lead id
+  selected: null,          // row-highlight lead id
+  selectedIds: new Set(),  // bulk-checkbox selection
   currentDetailId: null,
   currentJobId: null,
+  currentEmailJobId: null,
   sortCol: 'updated_at',
   sortDir: 'desc',
   search: '',
@@ -85,6 +87,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Import
   document.getElementById('btn-import').addEventListener('click', openImportModal);
+
+  // Settings
+  document.getElementById('btn-settings').addEventListener('click', openSettingsModal);
+  document.getElementById('settings-modal').addEventListener('click', e => {
+    if (e.target === e.currentTarget) closeSettingsModal();
+  });
+  document.getElementById('email-modal').addEventListener('click', e => {
+    if (e.target === e.currentTarget) { if (!state.currentEmailJobId) closeEmailModal(); }
+  });
   document.getElementById('import-file').addEventListener('change', e => {
     if (e.target.files[0]) handleImportFile(e.target.files[0]);
   });
@@ -209,10 +220,15 @@ function renderTable() {
     const conf   = Math.round((l.confidence || 0) * 100);
     const confColor = conf >= 70 ? '#22c55e' : conf >= 40 ? '#f59e0b' : '#ef4444';
     const isSelected = state.selected === l.id;
+    const isChecked  = state.selectedIds.has(l.id);
+    const emailed = l.last_emailed_at ? `title="Last emailed: ${formatDate(l.last_emailed_at)}"` : '';
 
-    return `<tr data-id="${l.id}" class="${isSelected ? 'selected' : ''}" onclick="selectRow(${l.id})" ondblclick="openDetail(${l.id})">
+    return `<tr data-id="${l.id}" class="${isSelected ? 'selected' : ''} ${isChecked ? 'checked' : ''}" onclick="selectRow(${l.id})" ondblclick="openDetail(${l.id})">
+      <td class="col-check" onclick="event.stopPropagation()">
+        <input type="checkbox" class="row-check" ${isChecked ? 'checked' : ''} onchange="toggleSelect(${l.id}, this.checked)">
+      </td>
       <td class="muted" style="font-size:11px">${i + 1}</td>
-      <td title="${esc(l.company_name)}">${esc(name)}</td>
+      <td title="${esc(l.company_name)}">${esc(name)}${l.last_emailed_at ? ' <span class="emailed-dot" '+emailed+'></span>' : ''}</td>
       <td class="mono" title="${esc(l.emails?.join(', '))}">${email ? `<span style="color:var(--blue)">${esc(email)}</span>` : '<span class="muted">—</span>'}</td>
       <td class="mono" style="color:var(--yellow)">${esc(phone) || '<span class="muted">—</span>'}</td>
       <td class="website" onclick="openWebsite(event,'${esc(l.website)}')" title="${esc(l.website)}">${esc(web) || '—'}</td>
@@ -227,6 +243,7 @@ function renderTable() {
       <td><button class="row-action" onclick="deleteRow(event,${l.id})" title="Delete">✕</button></td>
     </tr>`;
   }).join('');
+  updateSelectionBar();
 }
 
 /* ── Row selection ───────────────────────────────────────────────────── */
@@ -570,6 +587,7 @@ function handleKeyboard(e) {
     case 'n': openScrapeModal(); e.preventDefault(); break;
     case '/': document.getElementById('search').focus(); e.preventDefault(); break;
     case 'e': exportCsv(); break;
+    case 'm': if (state.selectedIds.size > 0) openEmailModal(); break;
     case 'escape': state.selected = null; renderTable(); break;
     case 'enter':
       if (state.selected) { openDetail(state.selected); e.preventDefault(); }
@@ -673,4 +691,271 @@ function formatDate(iso) {
 function debounce(fn, ms) {
   let t;
   return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
+}
+
+/* ── Bulk Selection ──────────────────────────────────────────────────── */
+function toggleSelect(id, checked) {
+  if (checked) state.selectedIds.add(id);
+  else state.selectedIds.delete(id);
+  updateSelectionBar();
+  // Update header checkbox
+  const all = state.filtered.every(l => state.selectedIds.has(l.id));
+  const none = state.filtered.every(l => !state.selectedIds.has(l.id));
+  const cb = document.getElementById('select-all');
+  if (cb) { cb.checked = all; cb.indeterminate = !all && !none; }
+}
+
+function toggleSelectAll(checkbox) {
+  if (checkbox.checked) {
+    state.filtered.forEach(l => state.selectedIds.add(l.id));
+  } else {
+    state.filtered.forEach(l => state.selectedIds.delete(l.id));
+  }
+  renderTable();
+}
+
+function deselectAll() {
+  state.selectedIds.clear();
+  const cb = document.getElementById('select-all');
+  if (cb) { cb.checked = false; cb.indeterminate = false; }
+  renderTable();
+}
+
+function updateSelectionBar() {
+  const n = state.selectedIds.size;
+  const bar = document.getElementById('selection-bar');
+  bar.classList.toggle('visible', n > 0);
+  const withEmail = state.leads.filter(l => state.selectedIds.has(l.id) && l.emails?.length > 0).length;
+  document.getElementById('selection-count').textContent =
+    `${n} selected${withEmail < n ? ` (${withEmail} have email)` : ''}`;
+}
+
+/* ── Email Campaign ──────────────────────────────────────────────────── */
+function openEmailModal() {
+  const withEmail = state.leads.filter(l => state.selectedIds.has(l.id) && l.emails?.length > 0);
+  document.getElementById('email-to-label').textContent =
+    `To: ${state.selectedIds.size} selected leads (${withEmail.length} have email address)`;
+
+  // Reset UI
+  document.getElementById('email-compose-section').style.display = '';
+  document.getElementById('email-progress-section').style.display = 'none';
+  document.getElementById('btn-email-send').style.display = '';
+  document.getElementById('btn-email-stop').style.display = 'none';
+  document.getElementById('btn-email-close').textContent = 'Cancel';
+  document.getElementById('email-log').innerHTML = '';
+
+  document.getElementById('email-modal').classList.add('open');
+  document.getElementById('email-subject').focus();
+}
+
+function closeEmailModal() {
+  if (state.currentEmailJobId) return;
+  document.getElementById('email-modal').classList.remove('open');
+  state.currentEmailJobId = null;
+}
+
+async function sendEmailCampaign() {
+  const subject = document.getElementById('email-subject').value.trim();
+  const body    = document.getElementById('email-body').value.trim();
+  if (!subject) { document.getElementById('email-subject').focus(); toast('Subject is required', 'error'); return; }
+  if (!body)    { document.getElementById('email-body').focus(); toast('Message body is required', 'error'); return; }
+  if (!state.selectedIds.size) { toast('No leads selected', 'error'); return; }
+
+  const autoContacted = document.getElementById('email-auto-contacted').checked;
+  const leadIds = [...state.selectedIds];
+
+  // Switch to progress view
+  document.getElementById('email-compose-section').style.display = 'none';
+  document.getElementById('email-progress-section').style.display = '';
+  document.getElementById('btn-email-send').style.display = 'none';
+  document.getElementById('btn-email-stop').style.display = '';
+  document.getElementById('btn-email-close').textContent = 'Running…';
+  document.getElementById('email-progress-fill').style.width = '0%';
+  ['email-stat-sent','email-stat-failed','email-stat-skipped'].forEach(id => {
+    document.getElementById(id).textContent = '0';
+  });
+
+  try {
+    const { job_id } = await api('POST', '/api/email/send', {
+      lead_ids: leadIds, subject, body, auto_contacted: autoContacted
+    });
+    state.currentEmailJobId = job_id;
+    listenToEmailJob(job_id, leadIds.length);
+  } catch(e) {
+    appendEmailLog('error', 'Failed to start: ' + e.message);
+    document.getElementById('btn-email-close').textContent = 'Close';
+    document.getElementById('btn-email-stop').style.display = 'none';
+  }
+}
+
+function listenToEmailJob(jobId, total) {
+  const es = new EventSource(`/api/email/jobs/${jobId}/stream`);
+  es.onmessage = e => {
+    const msg = JSON.parse(e.data);
+    if (msg.type === 'ping') return;
+    if (msg.type === 'log') {
+      appendEmailLog(msg.level, msg.msg);
+    }
+    if (msg.type === 'progress') {
+      document.getElementById('email-stat-sent').textContent    = msg.sent    || 0;
+      document.getElementById('email-stat-failed').textContent  = msg.failed  || 0;
+      document.getElementById('email-stat-skipped').textContent = msg.skipped || 0;
+      const done = (msg.sent || 0) + (msg.failed || 0) + (msg.skipped || 0);
+      const pct  = total > 0 ? Math.min(100, Math.round(done / total * 100)) : 0;
+      document.getElementById('email-progress-fill').style.width = pct + '%';
+    }
+    if (msg.type === 'done') {
+      es.close();
+      state.currentEmailJobId = null;
+      document.getElementById('btn-email-stop').style.display = 'none';
+      document.getElementById('btn-email-close').textContent = 'Close';
+      document.getElementById('email-progress-fill').style.width = '100%';
+      deselectAll();
+      loadLeads();
+      toast(`Campaign done — ${msg.counts?.sent || 0} sent`, 'success');
+    }
+  };
+  es.onerror = () => {
+    es.close();
+    state.currentEmailJobId = null;
+    document.getElementById('btn-email-stop').style.display = 'none';
+    document.getElementById('btn-email-close').textContent = 'Close';
+  };
+}
+
+function appendEmailLog(level, msg) {
+  const log = document.getElementById('email-log');
+  const div = document.createElement('div');
+  div.className = `log-line ${level}`;
+  div.textContent = msg;
+  log.appendChild(div);
+  log.scrollTop = log.scrollHeight;
+}
+
+async function stopEmailCampaign() {
+  if (state.currentEmailJobId) {
+    await fetch(`/api/email/jobs/${state.currentEmailJobId}/stop`);
+    toast('Stopping after current email…', 'info');
+    document.getElementById('btn-email-stop').disabled = true;
+  }
+}
+
+function insertMergeTag(tag) {
+  const ta = document.getElementById('email-body');
+  const start = ta.selectionStart;
+  const end   = ta.selectionEnd;
+  ta.value = ta.value.slice(0, start) + tag + ta.value.slice(end);
+  ta.selectionStart = ta.selectionEnd = start + tag.length;
+  ta.focus();
+}
+
+/* ── Settings ────────────────────────────────────────────────────────── */
+async function openSettingsModal() {
+  try {
+    const s = await GET('/api/settings');
+    document.getElementById('s-smtp-host').value   = s.smtp_host  || '';
+    document.getElementById('s-smtp-port').value   = s.smtp_port  || 587;
+    document.getElementById('s-smtp-ssl').checked  = !!s.smtp_ssl;
+    document.getElementById('s-smtp-starttls').checked = s.smtp_starttls !== false;
+    document.getElementById('s-smtp-user').value   = s.smtp_user  || '';
+    document.getElementById('s-smtp-password').value = '';  // never pre-fill password
+    document.getElementById('s-from-name').value   = s.from_name  || '';
+    document.getElementById('s-from-email').value  = s.from_email || '';
+    document.getElementById('s-delay-min').value   = s.delay_min  ?? 5;
+    document.getElementById('s-delay-max').value   = s.delay_max  ?? 15;
+    document.getElementById('s-daily-limit').value = s.daily_limit ?? 500;
+    document.getElementById('s-unsubscribe-footer').checked = s.unsubscribe_footer !== false;
+
+    // Disable env-locked fields
+    const locked = s._env_locked || [];
+    const fieldMap = {
+      smtp_host: 's-smtp-host', smtp_port: 's-smtp-port',
+      smtp_user: 's-smtp-user', smtp_password: 's-smtp-password',
+      from_name: 's-from-name', from_email: 's-from-email',
+    };
+    locked.forEach(key => {
+      const el = document.getElementById(fieldMap[key]);
+      if (el) { el.disabled = true; el.title = 'Set via environment variable'; }
+    });
+    document.getElementById('settings-env-notice').style.display = locked.length ? '' : 'none';
+
+    // Reset test result
+    document.getElementById('smtp-test-result').textContent = '';
+  } catch(e) {
+    toast('Failed to load settings', 'error');
+  }
+  // Switch to first tab
+  document.querySelector('.settings-tab[data-tab="smtp"]').click();
+  document.getElementById('settings-modal').classList.add('open');
+}
+
+function closeSettingsModal() {
+  document.getElementById('settings-modal').classList.remove('open');
+}
+
+function switchTab(btn) {
+  document.querySelectorAll('.settings-tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.settings-tab-body').forEach(t => t.style.display = 'none');
+  btn.classList.add('active');
+  document.getElementById('tab-' + btn.dataset.tab).style.display = '';
+}
+
+async function saveSettings() {
+  const pw = document.getElementById('s-smtp-password').value;
+  const updates = {
+    smtp_host:     document.getElementById('s-smtp-host').value.trim(),
+    smtp_port:     parseInt(document.getElementById('s-smtp-port').value) || 587,
+    smtp_ssl:      document.getElementById('s-smtp-ssl').checked,
+    smtp_starttls: document.getElementById('s-smtp-starttls').checked,
+    smtp_user:     document.getElementById('s-smtp-user').value.trim(),
+    from_name:     document.getElementById('s-from-name').value.trim(),
+    from_email:    document.getElementById('s-from-email').value.trim(),
+    delay_min:     parseFloat(document.getElementById('s-delay-min').value) || 5,
+    delay_max:     parseFloat(document.getElementById('s-delay-max').value) || 15,
+    daily_limit:   parseInt(document.getElementById('s-daily-limit').value) || 500,
+    unsubscribe_footer: document.getElementById('s-unsubscribe-footer').checked,
+  };
+  if (pw && !pw.includes('•')) updates.smtp_password = pw;
+  try {
+    await api('PUT', '/api/settings', updates);
+    toast('Settings saved', 'success');
+    closeSettingsModal();
+  } catch(e) {
+    toast('Failed to save: ' + e.message, 'error');
+  }
+}
+
+async function testSmtp() {
+  const btn = document.getElementById('btn-test-smtp');
+  const result = document.getElementById('smtp-test-result');
+  btn.disabled = true;
+  result.textContent = 'Testing…';
+  result.style.color = 'var(--text-muted)';
+  try {
+    // Save first so we test current values
+    const pw = document.getElementById('s-smtp-password').value;
+    const updates = {
+      smtp_host:     document.getElementById('s-smtp-host').value.trim(),
+      smtp_port:     parseInt(document.getElementById('s-smtp-port').value) || 587,
+      smtp_ssl:      document.getElementById('s-smtp-ssl').checked,
+      smtp_starttls: document.getElementById('s-smtp-starttls').checked,
+      smtp_user:     document.getElementById('s-smtp-user').value.trim(),
+      from_email:    document.getElementById('s-from-email').value.trim(),
+    };
+    if (pw && !pw.includes('•')) updates.smtp_password = pw;
+    await api('PUT', '/api/settings', updates);
+    const r = await api('POST', '/api/settings/test-smtp', {});
+    if (r.ok) {
+      result.textContent = '✓ Connected successfully';
+      result.style.color = 'var(--green)';
+    } else {
+      result.textContent = '✗ ' + r.error;
+      result.style.color = 'var(--red)';
+    }
+  } catch(e) {
+    result.textContent = '✗ ' + e.message;
+    result.style.color = 'var(--red)';
+  } finally {
+    btn.disabled = false;
+  }
 }

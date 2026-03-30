@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS leads (
     confidence      REAL    NOT NULL DEFAULT 0.0,
     status          TEXT    NOT NULL DEFAULT 'new',
     notes           TEXT    NOT NULL DEFAULT '',
+    last_emailed_at TEXT    NOT NULL DEFAULT '',
     created_at      TEXT    NOT NULL,
     updated_at      TEXT    NOT NULL
 );
@@ -39,6 +40,18 @@ CREATE INDEX IF NOT EXISTS idx_niche     ON leads(niche);
 CREATE INDEX IF NOT EXISTS idx_status    ON leads(status);
 CREATE INDEX IF NOT EXISTS idx_city      ON leads(city);
 CREATE INDEX IF NOT EXISTS idx_updated   ON leads(updated_at);
+
+CREATE TABLE IF NOT EXISTS email_logs (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    lead_id     INTEGER NOT NULL,
+    sent_at     TEXT    NOT NULL,
+    subject     TEXT    NOT NULL DEFAULT '',
+    to_email    TEXT    NOT NULL DEFAULT '',
+    status      TEXT    NOT NULL DEFAULT 'sent',
+    error       TEXT    NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_email_log_lead ON email_logs(lead_id);
+CREATE INDEX IF NOT EXISTS idx_email_log_sent ON email_logs(sent_at);
 """
 
 _local = threading.local()
@@ -49,7 +62,16 @@ def _conn() -> sqlite3.Connection:
         _local.conn = sqlite3.connect(str(DB_PATH), check_same_thread=False)
         _local.conn.row_factory = sqlite3.Row
         _local.conn.executescript(SCHEMA)
+        _migrate(_local.conn)
     return _local.conn
+
+
+def _migrate(conn: sqlite3.Connection) -> None:
+    """Apply schema migrations for columns added after initial release."""
+    existing = {row[1] for row in conn.execute("PRAGMA table_info(leads)").fetchall()}
+    if "last_emailed_at" not in existing:
+        conn.execute("ALTER TABLE leads ADD COLUMN last_emailed_at TEXT NOT NULL DEFAULT ''")
+        conn.commit()
 
 
 def _now() -> str:
@@ -235,3 +257,37 @@ def _row_to_dict(row: sqlite3.Row) -> dict:
     d["phones"] = json.loads(d.get("phones", "[]"))
     d["sources"] = json.loads(d.get("sources", "[]"))
     return d
+
+
+# ─── Email logs ─────────────────────────────────────────────────────────────
+
+def log_email(lead_id: int, subject: str, to_email: str, status: str, error: str = "") -> None:
+    conn = _conn()
+    conn.execute(
+        "INSERT INTO email_logs (lead_id, sent_at, subject, to_email, status, error) VALUES (?,?,?,?,?,?)",
+        (lead_id, _now(), subject, to_email, status, error),
+    )
+    conn.commit()
+
+
+def update_last_emailed(lead_id: int) -> None:
+    conn = _conn()
+    conn.execute("UPDATE leads SET last_emailed_at=?, updated_at=? WHERE id=?",
+                 (_now(), _now(), lead_id))
+    conn.commit()
+
+
+def fetch_email_logs(lead_id: int | None = None, limit: int = 200) -> list[dict]:
+    conn = _conn()
+    if lead_id:
+        rows = conn.execute(
+            "SELECT * FROM email_logs WHERE lead_id=? ORDER BY sent_at DESC LIMIT ?",
+            (lead_id, limit),
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            "SELECT el.*, l.company_name FROM email_logs el "
+            "LEFT JOIN leads l ON l.id=el.lead_id ORDER BY el.sent_at DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+    return [dict(r) for r in rows]

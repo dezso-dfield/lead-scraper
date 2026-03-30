@@ -45,7 +45,7 @@ html, body {
 /* ── Layout ───────────────────────────────────────────────────────────── */
 #app {
   display: grid;
-  grid-template-rows: auto auto 1fr;
+  grid-template-rows: auto auto 1fr auto auto;
   height: 100vh;
   overflow: hidden;
 }
@@ -611,6 +611,119 @@ kbd {
   flex-shrink: 0;
 }
 .shortcut-bar span { display: flex; align-items: center; gap: 4px; }
+
+/* ── Icon button ─────────────────────────────────────────────────────── */
+.icon-btn { padding: 6px 8px; }
+
+/* ── Checkbox column ─────────────────────────────────────────────────── */
+.col-check { width: 32px; padding: 0 6px; }
+.col-check input[type=checkbox],
+.row-check { cursor: pointer; width: 14px; height: 14px; accent-color: var(--primary); }
+tr.checked { background: rgba(99,102,241,.07) !important; }
+
+/* ── Emailed dot ─────────────────────────────────────────────────────── */
+.emailed-dot {
+  display: inline-block;
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--green);
+  margin-left: 5px;
+  vertical-align: middle;
+  opacity: .8;
+}
+
+/* ── Selection bar ───────────────────────────────────────────────────── */
+.selection-bar {
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 20px;
+  background: var(--primary-dim);
+  border-top: 1px solid var(--primary);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--primary-h);
+  flex-shrink: 0;
+}
+.selection-bar.visible { display: flex; }
+
+/* ── Email Modal ─────────────────────────────────────────────────────── */
+.email-modal-inner { width: min(640px, 100%); }
+.email-to-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.email-textarea {
+  width: 100%;
+  min-height: 200px;
+  resize: vertical;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.merge-tags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+}
+.merge-tag {
+  display: inline-block;
+  padding: 2px 8px;
+  background: var(--surface-3);
+  border: 1px solid var(--border-2);
+  border-radius: 4px;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--cyan);
+  cursor: pointer;
+  transition: all var(--transition);
+}
+.merge-tag:hover { background: rgba(6,182,212,.15); border-color: var(--cyan); }
+
+/* ── Settings Modal ──────────────────────────────────────────────────── */
+.settings-modal-inner { width: min(580px, 100%); }
+.settings-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  padding: 0 20px;
+}
+.settings-tab {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 13px;
+  font-family: inherit;
+  padding: 12px 16px;
+  margin-bottom: -1px;
+  transition: all var(--transition);
+}
+.settings-tab:hover { color: var(--text); }
+.settings-tab.active { color: var(--primary-h); border-bottom-color: var(--primary); }
+.settings-tab-body { padding: 20px; }
+.settings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 16px; }
+.settings-grid .field.full { grid-column: 1/-1; }
+.settings-grid .field label {
+  display: block;
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  margin-bottom: 5px;
+}
+.settings-grid .field input { width: 100%; }
+.field-hint { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
 
 /* ── Import drop zone ────────────────────────────────────────────────── */
 .import-drop-zone {

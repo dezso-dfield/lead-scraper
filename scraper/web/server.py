@@ -20,6 +20,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 import scraper.db as db
+import scraper.settings as settings_mod
 
 STATIC_DIR = Path(__file__).parent / "static"
 
@@ -41,6 +42,13 @@ class ScrapeRequest(BaseModel):
 class UpdateLeadRequest(BaseModel):
     status: str | None = None
     notes: str | None = None
+
+
+class EmailCampaignRequest(BaseModel):
+    lead_ids: list[int]
+    subject: str
+    body: str
+    auto_contacted: bool = True
 
 
 # ─── API Routes ───────────────────────────────────────────────────────────
@@ -228,6 +236,136 @@ def stop_scrape(job_id: str):
     if job_id in _jobs:
         _jobs[job_id]["running"] = False
     return {"ok": True}
+
+
+# ─── Settings ────────────────────────────────────────────────────────────
+
+@app.get("/api/settings")
+def get_settings():
+    return settings_mod.get_for_ui()
+
+
+@app.put("/api/settings")
+def update_settings(body: dict):
+    return settings_mod.save(body)
+
+
+@app.post("/api/settings/test-smtp")
+def test_smtp():
+    from scraper.email.smtp import test_connection
+    return test_connection()
+
+
+# ─── Email campaign ───────────────────────────────────────────────────────
+
+_email_jobs: dict[str, dict] = {}
+
+
+@app.post("/api/email/send")
+def start_email_campaign(body: EmailCampaignRequest, background_tasks: BackgroundTasks):
+    job_id = str(uuid.uuid4())
+    q: Queue = Queue()
+    _email_jobs[job_id] = {"queue": q, "done": False, "stop": [False],
+                           "counts": {"sent": 0, "failed": 0, "skipped": 0}}
+    background_tasks.add_task(
+        _run_email_campaign, job_id, body.lead_ids, body.subject, body.body, body.auto_contacted
+    )
+    return {"job_id": job_id}
+
+
+def _run_email_campaign(job_id: str, lead_ids: list[int], subject: str,
+                        body: str, auto_contacted: bool):
+    job = _email_jobs[job_id]
+    q: Queue = job["queue"]
+    stop_flag: list[bool] = job["stop"]
+
+    def emit(**kwargs):
+        q.put(kwargs)
+
+    try:
+        from scraper.email.smtp import send_campaign
+
+        leads = [db.fetch_by_id(lid) for lid in lead_ids]
+        leads = [l for l in leads if l]
+
+        emit(type="log", level="info",
+             msg=f"Starting campaign: {len(leads)} leads, subject: '{subject[:60]}'")
+
+        def on_progress(ev: dict):
+            t = ev.get("type", "")
+            if t == "sent":
+                job["counts"]["sent"] += 1
+                emit(type="log", level="success",
+                     msg=f"✓ [{ev['index']}/{ev['total']}] {ev.get('company','')[:40]} → {ev.get('to','')}")
+                emit(type="progress", **job["counts"], total=len(leads))
+                db.log_email(ev["lead_id"], subject, ev.get("to", ""), "sent")
+                if auto_contacted:
+                    db.update_status(ev["lead_id"], "contacted")
+                db.update_last_emailed(ev["lead_id"])
+            elif t == "failed":
+                job["counts"]["failed"] += 1
+                emit(type="log", level="error",
+                     msg=f"✗ [{ev['index']}/{ev['total']}] {ev.get('company','')[:40]} — {ev.get('error','')}")
+                emit(type="progress", **job["counts"], total=len(leads))
+                db.log_email(ev["lead_id"], subject, ev.get("to", ""), "failed", ev.get("error", ""))
+            elif t == "skipped":
+                job["counts"]["skipped"] += 1
+                emit(type="log", level="dim",
+                     msg=f"  [{ev['index']}/{ev['total']}] {ev.get('company','')[:40]} — skipped ({ev.get('reason','')})")
+            elif t == "delay":
+                emit(type="log", level="dim",
+                     msg=f"  Waiting {ev['seconds']}s before next email…")
+
+        send_campaign(leads, subject, body, stop_flag=stop_flag, on_progress=on_progress)
+
+        c = job["counts"]
+        emit(type="log", level="success", msg="═══ Campaign Complete ═══")
+        emit(type="log", level="info",    msg=f"  Sent:    {c['sent']}")
+        emit(type="log", level="info",    msg=f"  Failed:  {c['failed']}")
+        emit(type="log", level="info",    msg=f"  Skipped: {c['skipped']}")
+        emit(type="done", counts=c)
+
+    except Exception as e:
+        emit(type="log", level="error", msg=f"Error: {e}")
+        emit(type="done", counts=job["counts"])
+    finally:
+        job["done"] = True
+
+
+@app.get("/api/email/jobs/{job_id}/stream")
+async def email_stream(job_id: str):
+    if job_id not in _email_jobs:
+        raise HTTPException(404, "Job not found")
+
+    async def generate() -> AsyncIterator[str]:
+        job = _email_jobs[job_id]
+        q: Queue = job["queue"]
+        while True:
+            try:
+                msg = q.get_nowait()
+                yield f"data: {json.dumps(msg)}\n\n"
+                if msg.get("type") == "done":
+                    break
+            except Empty:
+                if job["done"] and q.empty():
+                    break
+                yield "data: {\"type\":\"ping\"}\n\n"
+                await asyncio.sleep(0.15)
+
+    return StreamingResponse(generate(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+@app.get("/api/email/jobs/{job_id}/stop")
+def stop_email_job(job_id: str):
+    if job_id in _email_jobs:
+        _email_jobs[job_id]["stop"][0] = True
+    return {"ok": True}
+
+
+@app.get("/api/email/logs")
+def get_email_logs(lead_id: int | None = None):
+    return db.fetch_email_logs(lead_id=lead_id)
 
 
 # ─── Export ───────────────────────────────────────────────────────────────
