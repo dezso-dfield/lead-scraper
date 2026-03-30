@@ -1,0 +1,15 @@
+Metadata-Version: 2.4
+Name: lead-scraper
+Version: 1.0.0
+Summary: Ultimate lead scraping tool for emails and phone numbers by location and niche
+Requires-Python: >=3.10
+Requires-Dist: httpx[http2]>=0.27
+Requires-Dist: beautifulsoup4>=4.12
+Requires-Dist: lxml>=5.2
+Requires-Dist: playwright>=1.44
+Requires-Dist: phonenumbers>=8.13
+Requires-Dist: rich>=13.7
+Requires-Dist: pandas>=2.2
+Requires-Dist: openpyxl>=3.1
+Requires-Dist: tenacity>=8.2
+Requires-Dist: googlesearch-python>=1.2

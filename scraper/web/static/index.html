@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lead Manager</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div id="app">
+
+  <!-- ── Header ─────────────────────────────────────────────────────── -->
+  <header id="header">
+    <div class="logo">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+        <circle cx="9" cy="7" r="4"/>
+        <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+        <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+      </svg>
+      Lead Manager
+    </div>
+    <div id="stats"></div>
+    <div class="header-actions">
+      <div class="btn-group">
+        <button class="btn" id="btn-export-csv" title="Export CSV">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          CSV
+        </button>
+        <button class="btn" id="btn-export-xlsx" title="Export Excel">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Excel
+        </button>
+        <button class="btn" id="btn-export-json" title="Export JSON">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          JSON
+        </button>
+      </div>
+      <button class="btn" id="btn-import" title="Import leads from CSV/Excel/JSON">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Import
+      </button>
+      <button class="btn primary" id="btn-new-scrape">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        New Scrape
+      </button>
+    </div>
+  </header>
+
+  <!-- ── Toolbar ────────────────────────────────────────────────────── -->
+  <div id="toolbar">
+    <div class="filter-group">
+      <div class="search-wrap">
+        <svg class="icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="text" id="search" placeholder="Search companies, emails…" autocomplete="off">
+        <button class="clear-search" id="clear-search" title="Clear">✕</button>
+      </div>
+      <select id="status-filter">
+        <option value="">All statuses</option>
+        <option value="new">New</option>
+        <option value="contacted">Contacted</option>
+        <option value="qualified">Qualified</option>
+        <option value="rejected">Rejected</option>
+      </select>
+      <button class="toggle-btn" id="toggle-email" data-active="false">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+        Has Email
+      </button>
+      <button class="toggle-btn" id="toggle-phone" data-active="false">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 13a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.6 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+        Has Phone
+      </button>
+    </div>
+    <span id="result-count"></span>
+  </div>
+
+  <!-- ── Table ──────────────────────────────────────────────────────── -->
+  <div id="table-wrap">
+    <div id="loading"><div class="spinner"></div></div>
+    <div id="empty-state">
+      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+      <h3>No leads yet</h3>
+      <p>Click <strong>New Scrape</strong> to start collecting leads from the web.</p>
+      <button class="btn primary" onclick="openScrapeModal()">Start Scraping</button>
+    </div>
+    <table id="leads-table">
+      <thead>
+        <tr>
+          <th data-col="id">#</th>
+          <th data-col="company_name">Company <span class="sort-icon">↕</span></th>
+          <th data-col="email">Email</th>
+          <th data-col="phone">Phone</th>
+          <th data-col="website">Website</th>
+          <th data-col="niche">Niche <span class="sort-icon">↕</span></th>
+          <th data-col="confidence">Conf <span class="sort-icon">↕</span></th>
+          <th data-col="status">Status <span class="sort-icon">↕</span></th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="leads-body"></tbody>
+    </table>
+  </div>
+
+  <!-- ── Shortcut bar ───────────────────────────────────────────────── -->
+  <div class="shortcut-bar">
+    <span><kbd>N</kbd> New Scrape</span>
+    <span><kbd>Enter</kbd> Open Detail</span>
+    <span><kbd>O</kbd> Open Website</span>
+    <span><kbd>C</kbd> Copy Email</span>
+    <span><kbd>T</kbd> Cycle Status</span>
+    <span><kbd>Del</kbd> Delete</span>
+    <span><kbd>/</kbd> Search</span>
+    <span><kbd>E</kbd> Export CSV</span>
+  </div>
+
+</div><!-- #app -->
+
+<!-- ── Scrape Modal ──────────────────────────────────────────────────── -->
+<div class="modal-overlay" id="scrape-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">New Scrape Job</span>
+      <button class="modal-close" onclick="closeScrapeModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="row">
+        <div class="field">
+          <label>Niche / Query</label>
+          <input type="text" id="scrape-niche" placeholder="e.g. event organizers, AI companies" autocomplete="off">
+        </div>
+        <div class="field">
+          <label>Max Leads</label>
+          <input type="number" id="scrape-max" value="100" min="10" max="1000">
+        </div>
+      </div>
+      <div class="field">
+        <label>Location</label>
+        <input type="text" id="scrape-location" value="Budapest, Hungary" autocomplete="off">
+      </div>
+
+      <div class="progress-bar" id="scrape-progress-bar">
+        <div class="progress-fill indeterminate" id="scrape-progress-fill"></div>
+      </div>
+
+      <div class="scrape-stats" id="scrape-stats">
+        <div class="scrape-stat">
+          <label>Discovered</label>
+          <span id="stat-discovered">0</span>
+        </div>
+        <div class="scrape-stat">
+          <label>New</label>
+          <span class="new" id="stat-new">0</span>
+        </div>
+        <div class="scrape-stat">
+          <label>Merged</label>
+          <span class="merged" id="stat-merged">0</span>
+        </div>
+      </div>
+
+      <div id="scrape-log"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" id="btn-scrape-close" onclick="closeScrapeModal()">Close</button>
+      <button class="btn danger" id="btn-scrape-stop" style="display:none" onclick="stopScrape()">Stop</button>
+      <button class="btn primary" id="btn-scrape-start" onclick="startScrape()">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        Start Scrape
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Import Modal ──────────────────────────────────────────────────── -->
+<div class="modal-overlay" id="import-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">Import Leads</span>
+      <button class="modal-close" onclick="closeImportModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <p style="color:var(--muted);font-size:13px;margin-bottom:16px">
+        Import leads from CSV, Excel (.xlsx), or JSON. Duplicates are automatically merged by domain.
+      </p>
+      <div class="import-drop-zone" id="import-drop-zone" onclick="document.getElementById('import-file').click()">
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        <div class="drop-text">Drop file here or click to browse</div>
+        <div class="drop-hint">Supports .csv, .xlsx, .json</div>
+      </div>
+      <input type="file" id="import-file" accept=".csv,.xlsx,.json" style="display:none">
+      <div id="import-status" style="display:none;margin-top:14px;padding:12px;border-radius:8px;font-size:13px"></div>
+      <div style="margin-top:14px;font-size:12px;color:var(--muted)">
+        <strong style="color:var(--text-dim)">Expected columns:</strong>
+        <span style="font-family:monospace"> website, company_name, emails, phones, address, city, country, niche</span>
+        <br>Emails and phones can be semicolon-separated for multiple values.
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeImportModal()">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Detail Modal ──────────────────────────────────────────────────── -->
+<div class="modal-overlay" id="detail-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title" id="detail-title">Lead Detail</span>
+      <button class="modal-close" onclick="closeDetailModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="detail-grid" id="detail-grid"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn danger" id="btn-detail-delete" onclick="deleteCurrentLead()">Delete</button>
+      <button class="btn" id="btn-detail-website" onclick="openCurrentWebsite()">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+        Open Website
+      </button>
+      <button class="btn primary" id="btn-detail-save" onclick="saveDetail()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Toast Container ───────────────────────────────────────────────── -->
+<div id="toast-container"></div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "Lead Manager Web",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-W", "ignore", "-m", "scraper", "--web"],
+      "port": 7337
+    }
+  ]
+}
