@@ -986,6 +986,25 @@ tr.checked { background: rgba(99,102,241,.07) !important; }
 .hist-filter-btn { transition: all var(--transition); }
 .hist-filter-btn.active { background: var(--primary); color: var(--bg); border-color: var(--primary); }
 
+/* ── Update button & modal ───────────────────────────────────────────── */
+.update-btn { position: relative; }
+.update-dot {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--green);
+  border: 2px solid var(--bg);
+}
+.update-modal-inner { width: min(480px, 100%); }
+.update-log-line { color: var(--text-muted); }
+.update-log-line.ok  { color: var(--green); }
+.update-log-line.err { color: var(--red); }
+@keyframes spin { to { transform: rotate(360deg); } }
+.spin { animation: spin 1s linear infinite; display: block; margin: 0 auto; }
+
 /* ── Called dot ──────────────────────────────────────────────────────── */
 .called-dot {
   display: inline-block;

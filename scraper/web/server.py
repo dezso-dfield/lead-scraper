@@ -638,6 +638,103 @@ async def import_json_file(file: UploadFile = File(...)):
 
 # ─── Static files + SPA fallback ─────────────────────────────────────────────
 
+# ─── Update endpoints ────────────────────────────────────────────────────────
+
+REPO_DIR = Path(__file__).parent.parent.parent  # project root
+
+
+def _git(*args: str, cwd: Path = REPO_DIR) -> str:
+    import subprocess
+    result = subprocess.run(
+        ["git", *args], cwd=str(cwd),
+        capture_output=True, text=True, timeout=30
+    )
+    return result.stdout.strip()
+
+
+@app.get("/api/update/check")
+def update_check():
+    """Compare local HEAD with origin/main."""
+    try:
+        _git("fetch", "origin", "main", "--quiet")
+        local  = _git("rev-parse", "HEAD")
+        remote = _git("rev-parse", "origin/main")
+        if local == remote:
+            return {"up_to_date": True, "commits_behind": 0, "changelog": []}
+        behind = int(_git("rev-list", "--count", f"HEAD..origin/main") or "0")
+        log = _git("log", "--oneline", "HEAD..origin/main")
+        changelog = [ln.strip() for ln in log.splitlines() if ln.strip()]
+        current_ver = _git("describe", "--tags", "--abbrev=0") or ""
+        return {
+            "up_to_date": False,
+            "commits_behind": behind,
+            "changelog": changelog,
+            "current_version": current_ver,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/update/run")
+async def update_run():
+    """Pull latest code and reinstall deps if needed. Streams log lines as SSE."""
+    import subprocess
+
+    async def generate() -> AsyncIterator[str]:
+        def send(msg: str) -> str:
+            return f"data: {json.dumps({'line': msg})}\n\n"
+
+        yield send("Pulling latest code from GitHub…")
+
+        # git pull
+        proc = await asyncio.create_subprocess_exec(
+            "git", "pull", "origin", "main",
+            cwd=str(REPO_DIR),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+        )
+        async for raw in proc.stdout:
+            line = raw.decode().rstrip()
+            if line:
+                yield send(line)
+        await proc.wait()
+
+        if proc.returncode != 0:
+            yield send("ERROR: git pull failed.")
+            yield f"data: {json.dumps({'done': True, 'success': False})}\n\n"
+            return
+
+        # Check if deps changed
+        changed = _git("diff", "HEAD@{1}", "HEAD", "--name-only")
+        needs_install = any(f in changed for f in ("requirements.txt", "pyproject.toml"))
+
+        if needs_install:
+            yield send("Dependencies changed — reinstalling…")
+            pip = str(REPO_DIR / ".venv" / "bin" / "pip")
+            import shutil
+            pip_cmd = pip if Path(pip).exists() else shutil.which("pip3") or "pip"
+            proc2 = await asyncio.create_subprocess_exec(
+                pip_cmd, "install", "-r", "requirements.txt", "-q",
+                cwd=str(REPO_DIR),
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
+            )
+            async for raw in proc2.stdout:
+                line = raw.decode().rstrip()
+                if line:
+                    yield send(line)
+            await proc2.wait()
+            yield send("Dependencies updated.")
+        else:
+            yield send("No dependency changes.")
+
+        yield send("Done! Restart the server to apply all changes.")
+        yield f"data: {json.dumps({'done': True, 'success': True})}\n\n"
+
+    return StreamingResponse(generate(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 

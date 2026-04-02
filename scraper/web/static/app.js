@@ -160,6 +160,14 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('calling-modal').addEventListener('click', e => {
     if (e.target === e.currentTarget) closeCallingModal();
   });
+
+  // Update modal
+  document.getElementById('update-modal').addEventListener('click', e => {
+    if (e.target === e.currentTarget) closeUpdateModal();
+  });
+
+  // Silent update check on load — just lights the dot if behind
+  checkUpdateSilent();
 });
 
 /* ── Data loading ────────────────────────────────────────────────────── */
@@ -1320,4 +1328,126 @@ function renderHistoryList(items) {
       <div class="hist-time">${time}</div>
     </div>`;
   }).join('');
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   UPDATE MODAL
+   ══════════════════════════════════════════════════════════════════════ */
+
+async function checkUpdateSilent() {
+  try {
+    const data = await GET('/api/update/check');
+    if (!data.up_to_date) {
+      document.getElementById('update-dot').style.display = 'block';
+    }
+  } catch (_) { /* silently ignore — no git, no network, etc. */ }
+}
+
+async function openUpdateModal() {
+  document.getElementById('update-modal').classList.add('open');
+  document.getElementById('update-checking').style.display = 'block';
+  document.getElementById('update-content').style.display  = 'none';
+  document.getElementById('update-error').style.display    = 'none';
+  document.getElementById('btn-do-update').style.display   = 'none';
+  document.getElementById('update-log-wrap').style.display = 'none';
+  document.getElementById('update-log').innerHTML = '';
+
+  try {
+    const data = await GET('/api/update/check');
+    document.getElementById('update-checking').style.display = 'none';
+    document.getElementById('update-content').style.display  = 'block';
+
+    const statusText    = document.getElementById('update-status-text');
+    const versionText   = document.getElementById('update-version-text');
+    const statusIcon    = document.getElementById('update-status-icon');
+    const changelogWrap = document.getElementById('update-changelog-wrap');
+    const changelogList = document.getElementById('update-changelog');
+
+    if (data.up_to_date) {
+      statusIcon.innerHTML = `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>`;
+      statusText.textContent = 'You\'re up to date';
+      statusText.style.color = 'var(--green)';
+      versionText.textContent = data.current_version ? `Version ${data.current_version}` : '';
+      changelogWrap.style.display = 'none';
+      document.getElementById('btn-do-update').style.display = 'none';
+      document.getElementById('update-dot').style.display = 'none';
+    } else {
+      statusIcon.innerHTML = `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`;
+      statusText.textContent = `${data.commits_behind} update${data.commits_behind !== 1 ? 's' : ''} available`;
+      statusText.style.color = 'var(--yellow)';
+      versionText.textContent = data.current_version ? `Current: ${data.current_version}` : '';
+      document.getElementById('update-dot').style.display = 'block';
+
+      if (data.changelog && data.changelog.length) {
+        changelogWrap.style.display = 'block';
+        changelogList.innerHTML = data.changelog.map(line => {
+          const hash = line.slice(0, 7);
+          const msg  = esc(line.slice(8));
+          return `<li style="display:flex;gap:8px;align-items:baseline">
+            <span style="font-family:var(--mono);font-size:11px;color:var(--text-muted);flex-shrink:0">${hash}</span>
+            <span style="font-size:13px">${msg}</span>
+          </li>`;
+        }).join('');
+      }
+      document.getElementById('btn-do-update').style.display = 'flex';
+    }
+  } catch(e) {
+    document.getElementById('update-checking').style.display = 'none';
+    document.getElementById('update-error').style.display    = 'block';
+    document.getElementById('update-error').textContent = 'Could not check for updates: ' + e.message;
+  }
+}
+
+function closeUpdateModal() {
+  document.getElementById('update-modal').classList.remove('open');
+}
+
+function runUpdate() {
+  const logWrap = document.getElementById('update-log-wrap');
+  const logEl   = document.getElementById('update-log');
+  const btn     = document.getElementById('btn-do-update');
+
+  logWrap.style.display = 'block';
+  logEl.innerHTML = '';
+  btn.disabled = true;
+  btn.textContent = 'Updating…';
+
+  const appendLine = (text, cls = '') => {
+    const d = document.createElement('div');
+    d.className = 'update-log-line' + (cls ? ' ' + cls : '');
+    d.textContent = text;
+    logEl.appendChild(d);
+    logEl.scrollTop = logEl.scrollHeight;
+  };
+
+  const es = new EventSource('/api/update/run');
+  es.onmessage = e => {
+    const msg = JSON.parse(e.data);
+    if (msg.line) {
+      const cls = msg.line.startsWith('ERROR') ? 'err'
+                : msg.line.startsWith('Done') || msg.line.startsWith('✓') ? 'ok'
+                : '';
+      appendLine(msg.line, cls);
+    }
+    if (msg.done) {
+      es.close();
+      btn.disabled = false;
+      if (msg.success) {
+        btn.textContent = 'Restart to apply';
+        btn.onclick = () => { closeUpdateModal(); toast('Restart the server to apply the update.', 'success'); };
+        document.getElementById('update-dot').style.display = 'none';
+        appendLine('Restart the server to apply changes.', 'ok');
+      } else {
+        btn.textContent = 'Retry';
+        btn.onclick = runUpdate;
+      }
+    }
+  };
+  es.onerror = () => {
+    es.close();
+    appendLine('Connection lost.', 'err');
+    btn.disabled = false;
+    btn.textContent = 'Retry';
+    btn.onclick = runUpdate;
+  };
 }
