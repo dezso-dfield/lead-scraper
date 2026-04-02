@@ -465,6 +465,42 @@ def get_email_logs(lead_id: int | None = None):
     return _db().fetch_email_logs(lead_id=lead_id)
 
 
+# ─── Activity log ─────────────────────────────────────────────────────────────
+
+class ActivityRequest(BaseModel):
+    activity_type: str          # "call" | "email" | "note"
+    outcome: str = ""           # "answered" | "no_answer" | "voicemail" | "callback" | "not_interested" | "interested" | "sent" | "failed"
+    subject: str = ""
+    notes: str = ""
+    update_status: str = ""     # optionally update lead status
+
+
+@app.post("/api/leads/{lead_id}/activity")
+def log_activity(lead_id: int, body: ActivityRequest):
+    d = _db()
+    lead = d.fetch_by_id(lead_id)
+    if not lead:
+        raise HTTPException(404, "Lead not found")
+    activity_id = d.log_activity(lead_id, body.activity_type, body.outcome, body.subject, body.notes)
+    if body.activity_type == "call":
+        d.update_last_called(lead_id)
+    elif body.activity_type == "email":
+        d.update_last_emailed(lead_id)
+    if body.update_status:
+        d.update_status(lead_id, body.update_status)
+    return {"id": activity_id, "ok": True}
+
+
+@app.get("/api/leads/{lead_id}/activity")
+def get_lead_activity(lead_id: int):
+    return _db().fetch_activities(lead_id=lead_id)
+
+
+@app.get("/api/activity")
+def get_all_activity(activity_type: str = "", limit: int = 200):
+    return _db().fetch_activities(activity_type=activity_type or None, limit=limit)
+
+
 # ─── Export ───────────────────────────────────────────────────────────────────
 
 @app.get("/api/export/csv")

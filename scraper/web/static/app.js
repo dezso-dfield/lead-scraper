@@ -149,6 +149,17 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('new-project-name').addEventListener('keydown', e => {
     if (e.key === 'Enter') createProject();
   });
+
+  // History
+  document.getElementById('btn-history').addEventListener('click', openHistoryModal);
+  document.getElementById('history-modal').addEventListener('click', e => {
+    if (e.target === e.currentTarget) closeHistoryModal();
+  });
+
+  // Calling modal
+  document.getElementById('calling-modal').addEventListener('click', e => {
+    if (e.target === e.currentTarget) closeCallingModal();
+  });
 });
 
 /* ── Data loading ────────────────────────────────────────────────────── */
@@ -245,13 +256,14 @@ function renderTable() {
     const isSelected = state.selected === l.id;
     const isChecked  = state.selectedIds.has(l.id);
     const emailed = l.last_emailed_at ? `title="Last emailed: ${formatDate(l.last_emailed_at)}"` : '';
+    const called  = l.last_called_at  ? `title="Last called: ${formatDate(l.last_called_at)}"` : '';
 
     return `<tr data-id="${l.id}" class="${isSelected ? 'selected' : ''} ${isChecked ? 'checked' : ''}" onclick="selectRow(${l.id})" ondblclick="openDetail(${l.id})">
       <td class="col-check" onclick="event.stopPropagation()">
         <input type="checkbox" class="row-check" ${isChecked ? 'checked' : ''} onchange="toggleSelect(${l.id}, this.checked)">
       </td>
       <td class="muted" style="font-size:11px">${i + 1}</td>
-      <td title="${esc(l.company_name)}">${esc(name)}${l.last_emailed_at ? ' <span class="emailed-dot" '+emailed+'></span>' : ''}</td>
+      <td title="${esc(l.company_name)}">${esc(name)}${l.last_emailed_at ? ' <span class="emailed-dot" '+emailed+'></span>' : ''}${l.last_called_at ? ' <span class="called-dot" '+called+'></span>' : ''}</td>
       <td class="mono" title="${esc(l.emails?.join(', '))}">${email ? `<span style="color:var(--blue)">${esc(email)}</span>` : '<span class="muted">—</span>'}</td>
       <td class="mono" style="color:var(--yellow)">${esc(phone) || '<span class="muted">—</span>'}</td>
       <td class="website" onclick="openWebsite(event,'${esc(l.website)}')" title="${esc(l.website)}">${esc(web) || '—'}</td>
@@ -1114,4 +1126,198 @@ async function testSmtp() {
   } finally {
     btn.disabled = false;
   }
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   CALLING MODAL
+   ══════════════════════════════════════════════════════════════════════ */
+
+const callingState = {
+  queue: [],      // [{id, company_name, phones, website, city, niche, last_called_at}]
+  cursor: 0,
+  done: 0,
+};
+
+function openCallingModal() {
+  // Build queue from selected leads that have phones
+  const leadsWithPhone = state.filtered.filter(
+    l => state.selectedIds.has(l.id) && l.phones && l.phones.length > 0
+  );
+  if (!leadsWithPhone.length) {
+    toast('No selected leads with phone numbers', 'error');
+    return;
+  }
+  callingState.queue  = leadsWithPhone;
+  callingState.cursor = 0;
+  callingState.done   = 0;
+  document.getElementById('call-notes').value = '';
+  document.getElementById('calling-modal').classList.add('open');
+  renderCallCard();
+}
+
+function closeCallingModal() {
+  document.getElementById('calling-modal').classList.remove('open');
+  if (callingState.done > 0) loadLeads();
+}
+
+function renderCallCard() {
+  const { queue, cursor } = callingState;
+  const total = queue.length;
+  const pct   = total ? Math.round((cursor / total) * 100) : 0;
+
+  document.getElementById('call-progress-bar').style.width  = pct + '%';
+  document.getElementById('call-progress-label').textContent = `${cursor + 1} / ${total}`;
+  document.getElementById('call-done-count').textContent     = callingState.done
+    ? `${callingState.done} logged`
+    : '';
+  document.getElementById('btn-call-prev').disabled = cursor === 0;
+
+  if (cursor >= total) {
+    document.getElementById('call-company').textContent = 'All done!';
+    document.getElementById('call-phone').textContent   = '';
+    document.getElementById('call-meta').textContent    = '';
+    document.getElementById('call-progress-bar').style.width = '100%';
+    document.getElementById('call-progress-label').textContent = `${total} / ${total}`;
+    document.querySelectorAll('.outcome-btn').forEach(b => b.disabled = true);
+    document.getElementById('btn-call-skip').disabled = true;
+    return;
+  }
+
+  const lead = queue[cursor];
+  document.getElementById('call-company').textContent = lead.company_name || domainName(lead.website) || '—';
+  document.getElementById('call-phone').textContent   = (lead.phones || [])[0] || '—';
+  document.getElementById('call-meta').innerHTML      = [
+    lead.city   ? `<span>${esc(lead.city)}</span>`  : '',
+    lead.niche  ? `<span>${esc(lead.niche)}</span>` : '',
+    (lead.phones || []).length > 1
+      ? `<span>${lead.phones.length} numbers</span>`
+      : '',
+  ].filter(Boolean).join(' · ');
+
+  document.querySelectorAll('.outcome-btn').forEach(b => b.disabled = false);
+  document.getElementById('btn-call-skip').disabled = false;
+  document.getElementById('call-notes').value = '';
+}
+
+async function logCall(outcome) {
+  const { queue, cursor } = callingState;
+  if (cursor >= queue.length) return;
+  const lead  = queue[cursor];
+  const notes = document.getElementById('call-notes').value.trim();
+
+  // Map outcome class names to DB values (no-answer → no_answer, etc.)
+  const outcomeDb = outcome;  // already underscored from HTML onclick
+
+  try {
+    await api('POST', `/api/leads/${lead.id}/activity`, {
+      activity_type: 'call',
+      outcome: outcomeDb,
+      notes,
+      update_status: ['answered', 'interested'].includes(outcomeDb) ? 'qualified' : '',
+    });
+    callingState.done++;
+    callingState.cursor++;
+    renderCallCard();
+  } catch(e) {
+    toast('Failed to log call: ' + e.message, 'error');
+  }
+}
+
+function callSkip() {
+  if (callingState.cursor < callingState.queue.length) {
+    callingState.cursor++;
+    renderCallCard();
+  }
+}
+
+function callPrev() {
+  if (callingState.cursor > 0) {
+    callingState.cursor--;
+    renderCallCard();
+  }
+}
+
+function copyCallPhone() {
+  const phone = document.getElementById('call-phone').textContent.trim();
+  if (!phone || phone === '—') return;
+  navigator.clipboard.writeText(phone).then(() => toast('Phone copied', 'success'));
+}
+
+
+/* ══════════════════════════════════════════════════════════════════════
+   ACTIVITY HISTORY MODAL
+   ══════════════════════════════════════════════════════════════════════ */
+
+const histState = { filter: '' };
+
+function openHistoryModal() {
+  histState.filter = '';
+  document.querySelectorAll('.hist-filter-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('hist-filter-all').classList.add('active');
+  document.getElementById('history-modal').classList.add('open');
+  loadHistory();
+}
+
+function closeHistoryModal() {
+  document.getElementById('history-modal').classList.remove('open');
+}
+
+function setHistFilter(type) {
+  histState.filter = type;
+  document.querySelectorAll('.hist-filter-btn').forEach(b => b.classList.remove('active'));
+  const id = type === '' ? 'hist-filter-all' : type === 'call' ? 'hist-filter-call' : 'hist-filter-email';
+  document.getElementById(id).classList.add('active');
+  loadHistory();
+}
+
+async function loadHistory() {
+  const list = document.getElementById('history-list');
+  list.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-muted);font-size:13px">Loading…</div>';
+  try {
+    let url = '/api/activity?limit=200';
+    if (histState.filter) url += '&activity_type=' + histState.filter;
+    const data = await GET(url);
+    renderHistoryList(data);
+  } catch(e) {
+    list.innerHTML = `<div style="padding:20px;text-align:center;color:var(--red);font-size:13px">Failed to load: ${esc(e.message)}</div>`;
+  }
+}
+
+function renderHistoryList(items) {
+  const list = document.getElementById('history-list');
+  if (!items.length) {
+    list.innerHTML = '<div style="padding:30px;text-align:center;color:var(--text-muted);font-size:13px">No activity yet</div>';
+    return;
+  }
+
+  const callIcon  = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 13a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.6 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>`;
+  const emailIcon = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>`;
+  const noteIcon  = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>`;
+
+  list.innerHTML = items.map(item => {
+    const isCall  = item.activity_type === 'call';
+    const isEmail = item.activity_type === 'email';
+    const icon    = isCall ? callIcon : isEmail ? emailIcon : noteIcon;
+    const iconCls = isCall ? 'call' : isEmail ? 'email' : 'note';
+    const outcome = item.outcome
+      ? `<span class="hist-outcome ${item.outcome}">${item.outcome.replace(/_/g, ' ')}</span>`
+      : '';
+    const company = esc(item.company_name || '—');
+    const subject = item.subject
+      ? `<div class="hist-meta">${esc(item.subject)}</div>`
+      : '';
+    const notes   = item.notes
+      ? `<div class="hist-notes">"${esc(item.notes)}"</div>`
+      : '';
+    const time = item.created_at ? formatDate(item.created_at) : '';
+
+    return `<div class="hist-item">
+      <div class="hist-icon ${iconCls}">${icon}</div>
+      <div class="hist-body">
+        <div class="hist-company">${company}${outcome}</div>
+        ${subject}${notes}
+      </div>
+      <div class="hist-time">${time}</div>
+    </div>`;
+  }).join('');
 }

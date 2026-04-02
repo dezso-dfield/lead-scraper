@@ -52,6 +52,18 @@ CREATE TABLE IF NOT EXISTS email_logs (
 );
 CREATE INDEX IF NOT EXISTS idx_email_log_lead ON email_logs(lead_id);
 CREATE INDEX IF NOT EXISTS idx_email_log_sent ON email_logs(sent_at);
+
+CREATE TABLE IF NOT EXISTS activity_log (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    lead_id       INTEGER NOT NULL,
+    activity_type TEXT    NOT NULL DEFAULT 'note',
+    outcome       TEXT    NOT NULL DEFAULT '',
+    subject       TEXT    NOT NULL DEFAULT '',
+    notes         TEXT    NOT NULL DEFAULT '',
+    created_at    TEXT    NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_activity_lead ON activity_log(lead_id);
+CREATE INDEX IF NOT EXISTS idx_activity_time ON activity_log(created_at);
 """
 
 
@@ -79,7 +91,23 @@ class Database:
         existing = {row[1] for row in conn.execute("PRAGMA table_info(leads)").fetchall()}
         if "last_emailed_at" not in existing:
             conn.execute("ALTER TABLE leads ADD COLUMN last_emailed_at TEXT NOT NULL DEFAULT ''")
-            conn.commit()
+        if "last_called_at" not in existing:
+            conn.execute("ALTER TABLE leads ADD COLUMN last_called_at TEXT NOT NULL DEFAULT ''")
+        # Ensure activity_log table exists (created after some installs)
+        conn.executescript("""
+            CREATE TABLE IF NOT EXISTS activity_log (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                lead_id       INTEGER NOT NULL,
+                activity_type TEXT    NOT NULL DEFAULT 'note',
+                outcome       TEXT    NOT NULL DEFAULT '',
+                subject       TEXT    NOT NULL DEFAULT '',
+                notes         TEXT    NOT NULL DEFAULT '',
+                created_at    TEXT    NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_activity_lead ON activity_log(lead_id);
+            CREATE INDEX IF NOT EXISTS idx_activity_time ON activity_log(created_at);
+        """)
+        conn.commit()
 
     @staticmethod
     def _now() -> str:
@@ -156,6 +184,39 @@ class Database:
         conn.execute("UPDATE leads SET last_emailed_at=?, updated_at=? WHERE id=?",
                      (self._now(), self._now(), lead_id))
         conn.commit()
+
+    def update_last_called(self, lead_id: int) -> None:
+        conn = self._conn()
+        conn.execute("UPDATE leads SET last_called_at=?, updated_at=? WHERE id=?",
+                     (self._now(), self._now(), lead_id))
+        conn.commit()
+
+    def log_activity(self, lead_id: int, activity_type: str, outcome: str = "",
+                     subject: str = "", notes: str = "") -> int:
+        conn = self._conn()
+        cur = conn.execute(
+            "INSERT INTO activity_log (lead_id, activity_type, outcome, subject, notes, created_at) VALUES (?,?,?,?,?,?)",
+            (lead_id, activity_type, outcome, subject, notes, self._now()),
+        )
+        conn.commit()
+        return cur.lastrowid
+
+    def fetch_activities(self, lead_id: int | None = None, limit: int = 300,
+                         activity_type: str = "") -> list[dict]:
+        conn = self._conn()
+        clauses = ["1=1"]
+        params: list = []
+        if lead_id:
+            clauses.append("al.lead_id=?"); params.append(lead_id)
+        if activity_type:
+            clauses.append("al.activity_type=?"); params.append(activity_type)
+        sql = (
+            f"SELECT al.*, l.company_name, l.website FROM activity_log al "
+            f"LEFT JOIN leads l ON l.id=al.lead_id "
+            f"WHERE {' AND '.join(clauses)} ORDER BY al.created_at DESC LIMIT ?"
+        )
+        params.append(limit)
+        return [dict(r) for r in conn.execute(sql, params).fetchall()]
 
     def log_email(self, lead_id: int, subject: str, to_email: str, status: str, error: str = "") -> None:
         conn = self._conn()
@@ -298,7 +359,10 @@ def update_notes(lead_id: int, notes: str) -> None:              _default.update
 def delete(lead_id: int) -> None:                                _default.delete(lead_id)
 def delete_many(ids: list[int]) -> None:                         _default.delete_many(ids)
 def update_last_emailed(lead_id: int) -> None:                   _default.update_last_emailed(lead_id)
+def update_last_called(lead_id: int) -> None:                    _default.update_last_called(lead_id)
 def log_email(lead_id, subject, to_email, status, error=""):     _default.log_email(lead_id, subject, to_email, status, error)
+def log_activity(lead_id, atype, outcome="", subject="", notes=""): return _default.log_activity(lead_id, atype, outcome, subject, notes)
+def fetch_activities(**kwargs) -> list[dict]:                    return _default.fetch_activities(**kwargs)
 def fetch_all(**kwargs) -> list[dict]:                           return _default.fetch_all(**kwargs)
 def fetch_by_id(lead_id: int) -> dict | None:                    return _default.fetch_by_id(lead_id)
 def stats() -> dict:                                             return _default.stats()
