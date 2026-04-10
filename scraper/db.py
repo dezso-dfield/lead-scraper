@@ -12,7 +12,8 @@ from pathlib import Path
 
 from scraper.models import Lead
 
-DB_PATH = Path.home() / ".scraper" / "leads.db"
+_base = Path("/tmp") if __import__("os").environ.get("VERCEL") else Path.home()
+DB_PATH = _base / ".scraper" / "leads.db"
 DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 
 SCHEMA = """

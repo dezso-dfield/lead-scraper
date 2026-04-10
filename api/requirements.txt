@@ -1,0 +1,4 @@
+# Vercel serverless — web-server only (scraping deps excluded to stay under 250 MB limit)
+fastapi>=0.110
+python-multipart>=0.0.9
+openpyxl>=3.1
