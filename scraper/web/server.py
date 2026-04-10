@@ -13,10 +13,8 @@ from pathlib import Path
 from queue import Empty, Queue
 from typing import AsyncIterator
 
-import uvicorn
 from fastapi import BackgroundTasks, FastAPI, File, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
-from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 import scraper.db as db
@@ -1300,4 +1298,5 @@ def run_server(host: str = "127.0.0.1", port: int = 7337, open_browser: bool = T
 
     print(f"\n  Lead Manager Web UI")
     print(f"  → http://{host}:{port}\n")
+    import uvicorn
     uvicorn.run(app, host=host, port=port, log_level="warning")

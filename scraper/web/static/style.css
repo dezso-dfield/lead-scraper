@@ -2187,3 +2187,338 @@ td:has(.copy-cell) { cursor: pointer; }
   text-overflow: ellipsis;
   max-width: 120px;
 }
+
+/* ══════════════════════════════════════════════════════════════════
+   SIDEBAR + TOPBAR REDESIGN
+   ══════════════════════════════════════════════════════════════════ */
+
+/* ── New app layout: sidebar + main ─────────────────────────────── */
+#app {
+  display: grid !important;
+  grid-template-columns: auto 1fr !important;
+  grid-template-rows: 100vh !important;
+  overflow: hidden !important;
+}
+
+/* Hide the old header entirely */
+#header { display: none !important; }
+
+/* ── Sidebar ─────────────────────────────────────────────────────── */
+#sidebar {
+  width: 220px;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transition: width .2s ease;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 200;
+}
+#sidebar.sb-collapsed { width: 56px; }
+
+/* Top row: logo + toggle */
+.sb-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 12px 10px;
+  border-bottom: 1px solid var(--border);
+  gap: 8px;
+  flex-shrink: 0;
+}
+.sb-logo {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.sb-logo svg { color: var(--primary-h); flex-shrink: 0; }
+.sb-title {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: -.3px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+#sidebar.sb-collapsed .sb-title { display: none; }
+
+.sb-toggle-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 5px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: background .15s, color .15s;
+}
+.sb-toggle-btn:hover { background: var(--surface-2); color: var(--text); }
+
+/* Project switcher in sidebar */
+.sb-project {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border);
+  transition: background .15s;
+  overflow: hidden;
+  flex-shrink: 0;
+  min-width: 0;
+}
+.sb-project:hover { background: var(--surface-2); }
+.sb-project .project-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.sb-project .project-name { font-size: 12px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sb-chevron { color: var(--text-muted); flex-shrink: 0; }
+
+/* Hide labels when collapsed */
+#sidebar.sb-collapsed .sb-label { display: none !important; }
+#sidebar.sb-collapsed .sb-chevron { display: none !important; }
+
+/* Sidebar nav */
+.sb-nav {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 6px;
+  overflow-y: auto;
+}
+
+/* Sidebar item */
+.sb-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 9px;
+  border-radius: 8px;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background .15s, color .15s;
+  text-align: left;
+  white-space: nowrap;
+  position: relative;
+  width: 100%;
+}
+.sb-item:hover { background: var(--surface-2); color: var(--text); }
+.sb-item.sb-active { background: var(--primary-dim); color: var(--primary-h); }
+.sb-item svg { flex-shrink: 0; opacity: .85; }
+.sb-item .update-dot {
+  position: absolute;
+  top: 6px; right: 6px;
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--red);
+}
+.sb-item .filter-active-dot {
+  position: absolute;
+  top: 6px; right: 6px;
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--primary);
+}
+#sidebar.sb-collapsed .sb-item { justify-content: center; padding: 9px; }
+
+/* Sidebar footer */
+.sb-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 6px 10px;
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+/* ── Main area ───────────────────────────────────────────────────── */
+#main {
+  display: grid;
+  grid-template-rows: 48px auto auto 1fr auto;
+  overflow: hidden;
+  min-width: 0;
+}
+
+/* ── Topbar ──────────────────────────────────────────────────────── */
+#topbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 16px;
+  height: 48px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  overflow: visible;
+  position: relative;
+  z-index: 150;
+}
+/* Override old toolbar styles */
+#toolbar {
+  background: transparent !important;
+  border-bottom: none !important;
+  padding: 0 !important;
+  height: auto !important;
+}
+.toolbar-main { display: none !important; }
+
+.topbar-search {
+  flex: 1;
+  min-width: 0;
+  max-width: 480px;
+}
+.topbar-search .search-wrap {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  height: 32px;
+  padding: 0 10px;
+}
+.topbar-search .search-wrap:focus-within {
+  border-color: var(--primary);
+  background: var(--surface-3);
+}
+.topbar-search input {
+  background: none;
+  border: none;
+  font-size: 13px;
+}
+
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+.topbar-divider {
+  width: 1px;
+  height: 20px;
+  background: var(--border);
+  flex-shrink: 0;
+}
+
+/* Stats in topbar — compact */
+#toolbar #stats,
+#topbar #stats {
+  display: flex !important;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+}
+
+/* ── Score: visual bar ───────────────────────────────────────────── */
+.score-bar-wrap {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  justify-content: center;
+}
+.score-bar {
+  width: 36px;
+  height: 4px;
+  background: var(--surface-3);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.score-bar-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width .3s ease;
+}
+.score-bar-fill.score-low  { background: var(--text-muted); }
+.score-bar-fill.score-mid  { background: var(--yellow); }
+.score-bar-fill.score-high { background: var(--green); }
+.score-num {
+  font-size: 11px;
+  font-weight: 600;
+  min-width: 18px;
+  text-align: right;
+}
+.score-num.score-low  { color: var(--text-muted); }
+.score-num.score-mid  { color: var(--yellow); }
+.score-num.score-high { color: var(--green); }
+
+/* ── Status: dot + short label ───────────────────────────────────── */
+.status-dot-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  font-weight: 500;
+}
+.status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.status-dot.new       { background: #818cf8; }
+.status-dot.contacted { background: #60a5fa; }
+.status-dot.warm      { background: #fbbf24; }
+.status-dot.qualified { background: #4ade80; }
+.status-dot.rejected  { background: #f87171; }
+
+/* Keep old badge class working for detail modal */
+.badge.new        { background: rgba(99,102,241,.12);  color: #a5b4fc; border: 1px solid rgba(99,102,241,.3); }
+.badge.contacted  { background: rgba(59,130,246,.12);  color: #93c5fd; border: 1px solid rgba(59,130,246,.3); }
+.badge.warm       { background: rgba(245,158,11,.12);  color: #fcd34d; border: 1px solid rgba(245,158,11,.3); }
+.badge.qualified  { background: rgba(34,197,94,.12);   color: #86efac; border: 1px solid rgba(34,197,94,.3);  }
+.badge.rejected   { background: rgba(239,68,68,.12);   color: #fca5a5; border: 1px solid rgba(239,68,68,.3);  }
+
+/* ── Contact icons in table ──────────────────────────────────────── */
+.contact-icons {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.ci {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  padding: 2px 5px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background .15s;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 160px;
+}
+.ci:hover { background: var(--surface-3); }
+.ci svg { flex-shrink: 0; opacity: .7; }
+.ci.ci-email { color: #60a5fa; }
+.ci.ci-email svg { color: #60a5fa; opacity: 1; }
+.ci.ci-phone { color: #fbbf24; }
+.ci.ci-phone svg { color: #fbbf24; opacity: 1; }
+.ci.ci-empty { color: var(--text-muted); opacity: .4; pointer-events: none; }
+
+/* Table columns updated widths */
+.col-contact { width: 18% !important; }
+.col-phone   { width: 14% !important; }
+
+/* ── Overrides: make #main/table-wrap fill properly ─────────────── */
+#table-wrap {
+  overflow-y: auto;
+  overflow-x: hidden;
+  position: relative;
+  min-height: 0;
+}
+
+/* Compact table rows */
+#leads-table td { padding: 9px 10px !important; }
+
+/* ── Tooltip for collapsed sidebar ──────────────────────────────── */
+#sidebar.sb-collapsed .sb-item {
+  position: relative;
+}

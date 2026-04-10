@@ -16,10 +16,13 @@ Structure:
 """
 from __future__ import annotations
 import json
+import os
 from datetime import datetime
 from pathlib import Path
 
-SCRAPER_DIR   = Path.home() / ".scraper"
+# On Vercel (read-only FS except /tmp) store data in /tmp
+_base = Path("/tmp") if os.environ.get("VERCEL") else Path.home()
+SCRAPER_DIR   = _base / ".scraper"
 PROJECTS_DIR  = SCRAPER_DIR / "projects"
 PROJECTS_FILE = SCRAPER_DIR / "projects.json"
 ACTIVE_FILE   = SCRAPER_DIR / "active_project.txt"

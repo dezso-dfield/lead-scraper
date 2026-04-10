@@ -1,0 +1,26 @@
+# Dev + build artifacts
+*.egg-info/
+__pycache__/
+*.pyc
+*.pyo
+.git/
+.DS_Store
+
+# Data directories (not for deployment)
+leads_output/
+*.db
+*.csv
+*.xlsx
+
+# TUI module (Textual — not deployed)
+scraper/tui/
+
+# Setup scripts
+setup.bat
+setup.sh
+update.bat
+update.sh
+
+# Docs
+README.md
+LICENSE
