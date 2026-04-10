@@ -31,6 +31,12 @@ CREATE TABLE IF NOT EXISTS leads (
     confidence      REAL    NOT NULL DEFAULT 0.0,
     status          TEXT    NOT NULL DEFAULT 'new',
     notes           TEXT    NOT NULL DEFAULT '',
+    callback_at     TEXT    NOT NULL DEFAULT '',
+    tags            TEXT    NOT NULL DEFAULT '[]',
+    contact_name    TEXT    NOT NULL DEFAULT '',
+    contact_title   TEXT    NOT NULL DEFAULT '',
+    rating          TEXT    NOT NULL DEFAULT '',
+    unsub_token     TEXT    NOT NULL DEFAULT '',
     last_emailed_at TEXT    NOT NULL DEFAULT '',
     created_at      TEXT    NOT NULL,
     updated_at      TEXT    NOT NULL
@@ -64,6 +70,58 @@ CREATE TABLE IF NOT EXISTS activity_log (
 );
 CREATE INDEX IF NOT EXISTS idx_activity_lead ON activity_log(lead_id);
 CREATE INDEX IF NOT EXISTS idx_activity_time ON activity_log(created_at);
+
+CREATE TABLE IF NOT EXISTS scripts (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    name       TEXT    NOT NULL DEFAULT '',
+    subject    TEXT    NOT NULL DEFAULT '',
+    body       TEXT    NOT NULL DEFAULT '',
+    created_at TEXT    NOT NULL,
+    updated_at TEXT    NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS sequences (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    name       TEXT    NOT NULL DEFAULT '',
+    trigger    TEXT    NOT NULL DEFAULT 'manual',
+    steps      TEXT    NOT NULL DEFAULT '[]',
+    active     INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT    NOT NULL,
+    updated_at TEXT    NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_seq_trigger ON sequences(trigger, active);
+
+CREATE TABLE IF NOT EXISTS enrollments (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    lead_id     INTEGER NOT NULL,
+    sequence_id INTEGER NOT NULL,
+    step_index  INTEGER NOT NULL DEFAULT 0,
+    next_run_at TEXT    NOT NULL DEFAULT '',
+    status      TEXT    NOT NULL DEFAULT 'active',
+    created_at  TEXT    NOT NULL,
+    updated_at  TEXT    NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_enroll_next ON enrollments(next_run_at, status);
+CREATE INDEX IF NOT EXISTS idx_enroll_lead ON enrollments(lead_id);
+
+CREATE TABLE IF NOT EXISTS email_opens (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    lead_id    INTEGER NOT NULL,
+    token      TEXT    UNIQUE NOT NULL,
+    opened_at  TEXT    NOT NULL DEFAULT '',
+    created_at TEXT    NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_opens_token ON email_opens(token);
+CREATE INDEX IF NOT EXISTS idx_opens_lead  ON email_opens(lead_id);
+
+CREATE TABLE IF NOT EXISTS webhooks (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    url        TEXT    NOT NULL DEFAULT '',
+    event      TEXT    NOT NULL DEFAULT 'status_changed',
+    active     INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT    NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_webhooks_event ON webhooks(event, active);
 """
 
 
@@ -93,6 +151,18 @@ class Database:
             conn.execute("ALTER TABLE leads ADD COLUMN last_emailed_at TEXT NOT NULL DEFAULT ''")
         if "last_called_at" not in existing:
             conn.execute("ALTER TABLE leads ADD COLUMN last_called_at TEXT NOT NULL DEFAULT ''")
+        if "callback_at" not in existing:
+            conn.execute("ALTER TABLE leads ADD COLUMN callback_at TEXT NOT NULL DEFAULT ''")
+        if "tags" not in existing:
+            conn.execute("ALTER TABLE leads ADD COLUMN tags TEXT NOT NULL DEFAULT '[]'")
+        if "contact_name" not in existing:
+            conn.execute("ALTER TABLE leads ADD COLUMN contact_name TEXT NOT NULL DEFAULT ''")
+        if "contact_title" not in existing:
+            conn.execute("ALTER TABLE leads ADD COLUMN contact_title TEXT NOT NULL DEFAULT ''")
+        if "rating" not in existing:
+            conn.execute("ALTER TABLE leads ADD COLUMN rating TEXT NOT NULL DEFAULT ''")
+        if "unsub_token" not in existing:
+            conn.execute("ALTER TABLE leads ADD COLUMN unsub_token TEXT NOT NULL DEFAULT ''")
         # Ensure activity_log table exists (created after some installs)
         conn.executescript("""
             CREATE TABLE IF NOT EXISTS activity_log (
@@ -106,6 +176,53 @@ class Database:
             );
             CREATE INDEX IF NOT EXISTS idx_activity_lead ON activity_log(lead_id);
             CREATE INDEX IF NOT EXISTS idx_activity_time ON activity_log(created_at);
+            CREATE TABLE IF NOT EXISTS scripts (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                name       TEXT    NOT NULL DEFAULT '',
+                subject    TEXT    NOT NULL DEFAULT '',
+                body       TEXT    NOT NULL DEFAULT '',
+                created_at TEXT    NOT NULL,
+                updated_at TEXT    NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS sequences (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                name       TEXT    NOT NULL DEFAULT '',
+                trigger    TEXT    NOT NULL DEFAULT 'manual',
+                steps      TEXT    NOT NULL DEFAULT '[]',
+                active     INTEGER NOT NULL DEFAULT 1,
+                created_at TEXT    NOT NULL,
+                updated_at TEXT    NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS enrollments (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                lead_id     INTEGER NOT NULL,
+                sequence_id INTEGER NOT NULL,
+                step_index  INTEGER NOT NULL DEFAULT 0,
+                next_run_at TEXT    NOT NULL DEFAULT '',
+                status      TEXT    NOT NULL DEFAULT 'active',
+                created_at  TEXT    NOT NULL,
+                updated_at  TEXT    NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_seq_trigger ON sequences(trigger, active);
+            CREATE INDEX IF NOT EXISTS idx_enroll_next ON enrollments(next_run_at, status);
+            CREATE INDEX IF NOT EXISTS idx_enroll_lead ON enrollments(lead_id);
+            CREATE TABLE IF NOT EXISTS email_opens (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                lead_id    INTEGER NOT NULL,
+                token      TEXT    UNIQUE NOT NULL,
+                opened_at  TEXT    NOT NULL DEFAULT '',
+                created_at TEXT    NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_opens_token ON email_opens(token);
+            CREATE INDEX IF NOT EXISTS idx_opens_lead  ON email_opens(lead_id);
+            CREATE TABLE IF NOT EXISTS webhooks (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                url        TEXT    NOT NULL DEFAULT '',
+                event      TEXT    NOT NULL DEFAULT 'status_changed',
+                active     INTEGER NOT NULL DEFAULT 1,
+                created_at TEXT    NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_webhooks_event ON webhooks(event, active);
         """)
         conn.commit()
 
@@ -236,6 +353,8 @@ class Database:
         status: str = "",
         has_email: bool = False,
         has_phone: bool = False,
+        tag: str = "",
+        callback_overdue: bool = False,
         order_by: str = "updated_at DESC",
     ) -> list[dict]:
         conn = self._conn()
@@ -259,6 +378,11 @@ class Database:
             clauses.append("emails != '[]'")
         if has_phone:
             clauses.append("phones != '[]'")
+        if tag:
+            clauses.append("tags LIKE ?")
+            params.append(f"%{tag}%")
+        if callback_overdue:
+            clauses.append("callback_at != '' AND callback_at <= datetime('now')")
 
         sql = f"SELECT * FROM leads WHERE {' AND '.join(clauses)} ORDER BY {order_by}"
         rows = conn.execute(sql, params).fetchall()
@@ -279,8 +403,10 @@ class Database:
                 SUM(CASE WHEN emails != '[]' AND phones != '[]' THEN 1 ELSE 0 END) as with_both,
                 SUM(CASE WHEN status='new' THEN 1 ELSE 0 END) as status_new,
                 SUM(CASE WHEN status='contacted' THEN 1 ELSE 0 END) as status_contacted,
+                SUM(CASE WHEN status='warm' THEN 1 ELSE 0 END) as status_warm,
                 SUM(CASE WHEN status='qualified' THEN 1 ELSE 0 END) as status_qualified,
-                SUM(CASE WHEN status='rejected' THEN 1 ELSE 0 END) as status_rejected
+                SUM(CASE WHEN status='rejected' THEN 1 ELSE 0 END) as status_rejected,
+                SUM(CASE WHEN callback_at != '' AND callback_at <= datetime('now') THEN 1 ELSE 0 END) as overdue_callbacks
             FROM leads
         """).fetchone()
         return dict(row) if row else {}
@@ -315,6 +441,353 @@ class Database:
             ).fetchall()
         return [dict(r) for r in rows]
 
+    # ── Scripts ──────────────────────────────────────────────────────────────
+
+    def fetch_scripts(self) -> list[dict]:
+        conn = self._conn()
+        rows = conn.execute("SELECT * FROM scripts ORDER BY name ASC").fetchall()
+        return [dict(r) for r in rows]
+
+    def save_script(self, name: str, subject: str, body: str,
+                    script_id: int | None = None) -> dict:
+        conn = self._conn()
+        now  = self._now()
+        if script_id:
+            conn.execute(
+                "UPDATE scripts SET name=?, subject=?, body=?, updated_at=? WHERE id=?",
+                (name, subject, body, now, script_id),
+            )
+        else:
+            conn.execute(
+                "INSERT INTO scripts (name, subject, body, created_at, updated_at) VALUES (?,?,?,?,?)",
+                (name, subject, body, now, now),
+            )
+        conn.commit()
+        row = conn.execute(
+            "SELECT * FROM scripts WHERE id = last_insert_rowid()" if not script_id
+            else f"SELECT * FROM scripts WHERE id = {script_id}"
+        ).fetchone()
+        return dict(row)
+
+    def delete_script(self, script_id: int) -> None:
+        conn = self._conn()
+        conn.execute("DELETE FROM scripts WHERE id=?", (script_id,))
+        conn.commit()
+
+    # ── Reset ────────────────────────────────────────────────────────────────
+
+    def delete_all_leads(self) -> int:
+        conn = self._conn()
+        count = conn.execute("SELECT COUNT(*) FROM leads").fetchone()[0]
+        conn.execute("DELETE FROM leads")
+        conn.execute("DELETE FROM email_logs")
+        conn.execute("DELETE FROM activity_log")
+        conn.execute("DELETE FROM enrollments")
+        conn.commit()
+        return count
+
+    def update_tags(self, lead_id: int, tags: list[str]) -> None:
+        conn = self._conn()
+        conn.execute("UPDATE leads SET tags=?, updated_at=? WHERE id=?",
+                     (json.dumps(tags), self._now(), lead_id))
+        conn.commit()
+
+    def update_callback_at(self, lead_id: int, callback_at: str) -> None:
+        conn = self._conn()
+        conn.execute("UPDATE leads SET callback_at=?, updated_at=? WHERE id=?",
+                     (callback_at, self._now(), lead_id))
+        conn.commit()
+
+    def bulk_update_status(self, lead_ids: list[int], status: str) -> int:
+        if not lead_ids:
+            return 0
+        conn = self._conn()
+        placeholders = ",".join("?" * len(lead_ids))
+        conn.execute(
+            f"UPDATE leads SET status=?, updated_at=? WHERE id IN ({placeholders})",
+            [status, self._now()] + lead_ids,
+        )
+        conn.commit()
+        return len(lead_ids)
+
+    def create_open_token(self, lead_id: int, token: str) -> None:
+        conn = self._conn()
+        conn.execute(
+            "INSERT OR IGNORE INTO email_opens (lead_id, token, created_at) VALUES (?,?,?)",
+            (lead_id, token, self._now()),
+        )
+        conn.commit()
+
+    def record_open(self, token: str) -> int | None:
+        """Mark token as opened. Returns lead_id or None."""
+        conn = self._conn()
+        row = conn.execute("SELECT lead_id, opened_at FROM email_opens WHERE token=?", (token,)).fetchone()
+        if not row:
+            return None
+        if not row["opened_at"]:
+            conn.execute("UPDATE email_opens SET opened_at=? WHERE token=?", (self._now(), token))
+            conn.execute("UPDATE leads SET status='warm', updated_at=? WHERE id=? AND status NOT IN ('qualified','rejected')",
+                         (self._now(), row["lead_id"]))
+            conn.commit()
+        return row["lead_id"]
+
+    def dashboard_stats(self) -> dict:
+        conn = self._conn()
+        funnel = conn.execute("""
+            SELECT
+                SUM(CASE WHEN status='new' THEN 1 ELSE 0 END) as new,
+                SUM(CASE WHEN status='contacted' THEN 1 ELSE 0 END) as contacted,
+                SUM(CASE WHEN status='warm' THEN 1 ELSE 0 END) as warm,
+                SUM(CASE WHEN status='qualified' THEN 1 ELSE 0 END) as qualified,
+                SUM(CASE WHEN status='rejected' THEN 1 ELSE 0 END) as rejected,
+                COUNT(*) as total
+            FROM leads
+        """).fetchone()
+        emails = conn.execute("""
+            SELECT
+                COUNT(*) as total_sent,
+                SUM(CASE WHEN status='sent' THEN 1 ELSE 0 END) as sent,
+                SUM(CASE WHEN status='failed' THEN 1 ELSE 0 END) as failed
+            FROM email_logs
+        """).fetchone()
+        opens = conn.execute("SELECT COUNT(*) as opened FROM email_opens WHERE opened_at != ''").fetchone()
+        callbacks = conn.execute(
+            "SELECT COUNT(*) as due FROM leads WHERE callback_at != '' AND callback_at <= datetime('now')"
+        ).fetchone()
+        return {
+            "funnel": dict(funnel) if funnel else {},
+            "emails": {**(dict(emails) if emails else {}), "opened": opens["opened"] if opens else 0},
+            "callbacks_due": callbacks["due"] if callbacks else 0,
+        }
+
+    def update_contact(self, lead_id: int, contact_name: str, contact_title: str) -> None:
+        conn = self._conn()
+        conn.execute("UPDATE leads SET contact_name=?, contact_title=?, updated_at=? WHERE id=?",
+                     (contact_name, contact_title, self._now(), lead_id))
+        conn.commit()
+
+    def update_company_name(self, lead_id: int, company_name: str) -> None:
+        conn = self._conn()
+        conn.execute("UPDATE leads SET company_name=?, updated_at=? WHERE id=?",
+                     (company_name, self._now(), lead_id))
+        conn.commit()
+
+    def update_niche(self, lead_id: int, niche: str) -> None:
+        conn = self._conn()
+        conn.execute("UPDATE leads SET niche=?, updated_at=? WHERE id=?",
+                     (niche, self._now(), lead_id))
+        conn.commit()
+
+    def get_or_create_unsub_token(self, lead_id: int) -> str:
+        import secrets
+        conn = self._conn()
+        row = conn.execute("SELECT unsub_token FROM leads WHERE id=?", (lead_id,)).fetchone()
+        if not row:
+            return ""
+        token = row["unsub_token"]
+        if not token:
+            token = secrets.token_urlsafe(20)
+            conn.execute("UPDATE leads SET unsub_token=? WHERE id=?", (token, lead_id))
+            conn.commit()
+        return token
+
+    def unsubscribe_by_token(self, token: str) -> dict | None:
+        """Mark lead as rejected via unsubscribe token. Returns lead dict or None."""
+        conn = self._conn()
+        row = conn.execute("SELECT id, status FROM leads WHERE unsub_token=?", (token,)).fetchone()
+        if not row:
+            return None
+        lead_id = row["id"]
+        if row["status"] != "rejected":
+            conn.execute("UPDATE leads SET status='rejected', updated_at=? WHERE id=?",
+                         (self._now(), lead_id))
+            self.log_activity(lead_id, "unsubscribed", outcome="rejected", notes="Via unsubscribe link")
+            conn.commit()
+        return self.fetch_by_id(lead_id)
+
+    # ── Webhooks ─────────────────────────────────────────────────────────────
+
+    def fetch_webhooks(self, event: str = "") -> list[dict]:
+        conn = self._conn()
+        if event:
+            rows = conn.execute(
+                "SELECT * FROM webhooks WHERE (event=? OR event='*') AND active=1 ORDER BY id",
+                (event,),
+            ).fetchall()
+        else:
+            rows = conn.execute("SELECT * FROM webhooks ORDER BY id").fetchall()
+        return [dict(r) for r in rows]
+
+    def save_webhook(self, url: str, event: str, active: bool = True, webhook_id: int | None = None) -> dict:
+        conn = self._conn()
+        now = self._now()
+        if webhook_id:
+            conn.execute("UPDATE webhooks SET url=?, event=?, active=?, created_at=? WHERE id=?",
+                         (url, event, int(active), now, webhook_id))
+        else:
+            conn.execute("INSERT INTO webhooks (url, event, active, created_at) VALUES (?,?,?,?)",
+                         (url, event, int(active), now))
+        conn.commit()
+        if webhook_id:
+            row = conn.execute("SELECT * FROM webhooks WHERE id=?", (webhook_id,)).fetchone()
+        else:
+            row = conn.execute("SELECT * FROM webhooks WHERE id=last_insert_rowid()").fetchone()
+        return dict(row)
+
+    def delete_webhook(self, webhook_id: int) -> None:
+        conn = self._conn()
+        conn.execute("DELETE FROM webhooks WHERE id=?", (webhook_id,))
+        conn.commit()
+
+    # ── Sequences ────────────────────────────────────────────────────────────
+
+    def fetch_sequences(self) -> list[dict]:
+        conn = self._conn()
+        rows = conn.execute("SELECT * FROM sequences ORDER BY name ASC").fetchall()
+        result = []
+        for r in rows:
+            d = dict(r)
+            d["steps"] = json.loads(d.get("steps", "[]"))
+            result.append(d)
+        return result
+
+    def sequences_by_trigger(self, trigger: str) -> list[dict]:
+        conn = self._conn()
+        rows = conn.execute(
+            "SELECT * FROM sequences WHERE trigger=? AND active=1", (trigger,)
+        ).fetchall()
+        result = []
+        for r in rows:
+            d = dict(r)
+            d["steps"] = json.loads(d.get("steps", "[]"))
+            result.append(d)
+        return result
+
+    def save_sequence(self, name: str, trigger: str, steps: list,
+                      active: bool = True, seq_id: int | None = None) -> dict:
+        conn = self._conn()
+        now = self._now()
+        steps_json = json.dumps(steps)
+        if seq_id:
+            conn.execute(
+                "UPDATE sequences SET name=?, trigger=?, steps=?, active=?, updated_at=? WHERE id=?",
+                (name, trigger, steps_json, int(active), now, seq_id),
+            )
+            conn.commit()
+            row = conn.execute("SELECT * FROM sequences WHERE id=?", (seq_id,)).fetchone()
+        else:
+            conn.execute(
+                "INSERT INTO sequences (name, trigger, steps, active, created_at, updated_at) VALUES (?,?,?,?,?,?)",
+                (name, trigger, steps_json, int(active), now, now),
+            )
+            conn.commit()
+            row = conn.execute("SELECT * FROM sequences WHERE id = last_insert_rowid()").fetchone()
+        d = dict(row)
+        d["steps"] = json.loads(d.get("steps", "[]"))
+        return d
+
+    def delete_sequence(self, seq_id: int) -> None:
+        conn = self._conn()
+        conn.execute("DELETE FROM sequences WHERE id=?", (seq_id,))
+        conn.execute("DELETE FROM enrollments WHERE sequence_id=?", (seq_id,))
+        conn.commit()
+
+    # ── Enrollments ──────────────────────────────────────────────────────────
+
+    def enroll_lead(self, lead_id: int, sequence_id: int) -> dict | None:
+        """Enroll a lead in a sequence. Returns enrollment dict, or None if already active."""
+        conn = self._conn()
+        existing = conn.execute(
+            "SELECT id FROM enrollments WHERE lead_id=? AND sequence_id=? AND status='active'",
+            (lead_id, sequence_id),
+        ).fetchone()
+        if existing:
+            return None
+        seq = conn.execute("SELECT * FROM sequences WHERE id=?", (sequence_id,)).fetchone()
+        if not seq:
+            return None
+        steps = json.loads(seq["steps"])
+        if not steps:
+            return None
+        from datetime import timedelta
+        delay_days = float(steps[0].get("delay_days", 1))
+        next_run = (datetime.utcnow() + timedelta(days=delay_days)).isoformat()
+        now = self._now()
+        cur = conn.execute(
+            "INSERT INTO enrollments (lead_id, sequence_id, step_index, next_run_at, status, created_at, updated_at) VALUES (?,?,?,?,?,?,?)",
+            (lead_id, sequence_id, 0, next_run, "active", now, now),
+        )
+        conn.commit()
+        return dict(conn.execute("SELECT * FROM enrollments WHERE id=?", (cur.lastrowid,)).fetchone())
+
+    def fetch_enrollments(self, lead_id: int | None = None) -> list[dict]:
+        conn = self._conn()
+        if lead_id:
+            rows = conn.execute(
+                """SELECT e.*, s.name as seq_name, s.steps as seq_steps
+                   FROM enrollments e JOIN sequences s ON s.id=e.sequence_id
+                   WHERE e.lead_id=? ORDER BY e.created_at DESC""",
+                (lead_id,),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                """SELECT e.*, s.name as seq_name, l.company_name
+                   FROM enrollments e
+                   JOIN sequences s ON s.id=e.sequence_id
+                   LEFT JOIN leads l ON l.id=e.lead_id
+                   ORDER BY e.next_run_at ASC"""
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_due_enrollments(self) -> list[dict]:
+        conn = self._conn()
+        now = self._now()
+        rows = conn.execute(
+            """SELECT e.*, s.steps, s.name as seq_name, l.company_name, l.emails
+               FROM enrollments e
+               JOIN sequences s ON s.id=e.sequence_id
+               JOIN leads l ON l.id=e.lead_id
+               WHERE e.status='active' AND e.next_run_at <= ?
+               ORDER BY e.next_run_at ASC""",
+            (now,),
+        ).fetchall()
+        result = []
+        for r in rows:
+            d = dict(r)
+            d["steps_list"] = json.loads(d.get("steps", "[]"))
+            d["emails_list"] = json.loads(d.get("emails", "[]"))
+            result.append(d)
+        return result
+
+    def advance_enrollment(self, enrollment_id: int) -> None:
+        conn = self._conn()
+        row = conn.execute(
+            "SELECT e.*, s.steps FROM enrollments e JOIN sequences s ON s.id=e.sequence_id WHERE e.id=?",
+            (enrollment_id,),
+        ).fetchone()
+        if not row:
+            return
+        steps = json.loads(row["steps"])
+        next_idx = row["step_index"] + 1
+        now = self._now()
+        if next_idx >= len(steps):
+            conn.execute("UPDATE enrollments SET status='completed', updated_at=? WHERE id=?", (now, enrollment_id))
+        else:
+            from datetime import timedelta
+            delay_days = float(steps[next_idx].get("delay_days", 1))
+            next_run = (datetime.utcnow() + timedelta(days=delay_days)).isoformat()
+            conn.execute(
+                "UPDATE enrollments SET step_index=?, next_run_at=?, updated_at=? WHERE id=?",
+                (next_idx, next_run, now, enrollment_id),
+            )
+        conn.commit()
+
+    def cancel_enrollment(self, enrollment_id: int) -> None:
+        conn = self._conn()
+        conn.execute("UPDATE enrollments SET status='cancelled', updated_at=? WHERE id=?",
+                     (self._now(), enrollment_id))
+        conn.commit()
+
 
 # ─── Factory + caching ───────────────────────────────────────────────────────
 
@@ -345,6 +818,16 @@ def _row_to_dict(row: sqlite3.Row) -> dict:
     d["emails"]  = json.loads(d.get("emails",  "[]"))
     d["phones"]  = json.loads(d.get("phones",  "[]"))
     d["sources"] = json.loads(d.get("sources", "[]"))
+    d["tags"]    = json.loads(d.get("tags",    "[]"))
+    # Compute score
+    score = 0
+    if d["emails"]:  score += 30
+    if d["phones"]:  score += 20
+    if d.get("website"): score += 10
+    if d.get("city"):    score += 5
+    st = d.get("status", "new")
+    score += {"new": 0, "contacted": 10, "warm": 20, "qualified": 35, "rejected": -10}.get(st, 0)
+    d["score"] = min(100, score)
     return d
 
 
@@ -370,3 +853,17 @@ def exists(key: str) -> bool:                                    return _default
 def niches() -> list[str]:                                       return _default.niches()
 def cities() -> list[str]:                                       return _default.cities()
 def fetch_email_logs(**kwargs) -> list[dict]:                    return _default.fetch_email_logs(**kwargs)
+def update_tags(lead_id: int, tags: list[str]) -> None:             _default.update_tags(lead_id, tags)
+def update_callback_at(lead_id: int, callback_at: str) -> None:     _default.update_callback_at(lead_id, callback_at)
+def bulk_update_status(ids: list[int], status: str) -> int:         return _default.bulk_update_status(ids, status)
+def create_open_token(lead_id: int, token: str) -> None:            _default.create_open_token(lead_id, token)
+def record_open(token: str) -> int | None:                          return _default.record_open(token)
+def dashboard_stats() -> dict:                                       return _default.dashboard_stats()
+def update_contact(lead_id: int, contact_name: str, contact_title: str) -> None: _default.update_contact(lead_id, contact_name, contact_title)
+def update_company_name(lead_id: int, company_name: str) -> None:                _default.update_company_name(lead_id, company_name)
+def update_niche(lead_id: int, niche: str) -> None:                              _default.update_niche(lead_id, niche)
+def get_or_create_unsub_token(lead_id: int) -> str:                               return _default.get_or_create_unsub_token(lead_id)
+def unsubscribe_by_token(token: str) -> dict | None:                              return _default.unsubscribe_by_token(token)
+def fetch_webhooks(event: str = "") -> list[dict]:                                return _default.fetch_webhooks(event)
+def save_webhook(url: str, event: str, active: bool = True, webhook_id: int | None = None) -> dict: return _default.save_webhook(url, event, active, webhook_id)
+def delete_webhook(webhook_id: int) -> None:                                      _default.delete_webhook(webhook_id)

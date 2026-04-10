@@ -17,7 +17,7 @@ MERGE_TAGS = [
     "{{email}}", "{{city}}", "{{niche}}",
 ]
 
-UNSUBSCRIBE_FOOTER = "\n\n---\nTo unsubscribe reply with 'unsubscribe'."
+UNSUBSCRIBE_FOOTER = "\n\n---\nTo unsubscribe: {{_unsub_url}}"
 
 
 def render(text: str, lead: dict) -> str:
@@ -29,6 +29,9 @@ def render(text: str, lead: dict) -> str:
         "{{email}}":        (lead.get("emails") or [""])[0],
         "{{city}}":         lead.get("city") or "",
         "{{niche}}":        lead.get("niche") or "",
+        "{{_pixel_token}}": lead.get("_pixel_token") or "",
+        "{{_unsub_url}}":   lead.get("_unsub_url") or "",
+        "{{_unsub_token}}": lead.get("_unsub_token") or "",
     }
     for tag, val in replacements.items():
         text = text.replace(tag, val)
@@ -45,9 +48,10 @@ def _build_conn(host: str, port: int, use_ssl: bool, use_starttls: bool) -> smtp
     return s
 
 
-def test_connection() -> dict:
+def test_connection(cfg: dict | None = None) -> dict:
     """Attempt to connect and authenticate. Returns {ok, error}."""
-    cfg = load_settings()
+    if cfg is None:
+        cfg = load_settings()
     host = cfg.get("smtp_host", "")
     if not host:
         return {"ok": False, "error": "SMTP host not configured"}
@@ -64,6 +68,43 @@ def test_connection() -> dict:
         return {"ok": True, "error": ""}
     except Exception as e:
         return {"ok": False, "error": str(e)}
+
+
+def send_one(cfg: dict, to_email: str, subject: str, body: str,
+             lead: dict | None = None) -> None:
+    """Send a single email using the provided cfg dict."""
+    host      = cfg.get("smtp_host", "")
+    port      = int(cfg.get("smtp_port", 587))
+    use_ssl   = cfg.get("smtp_ssl", False)
+    use_tls   = cfg.get("smtp_starttls", True)
+    user      = cfg.get("smtp_user", "")
+    password  = cfg.get("smtp_password", "")
+    from_email = cfg.get("from_email", "") or user
+    from_name  = cfg.get("from_name", "")
+    add_unsub  = cfg.get("unsubscribe_footer", True)
+
+    if not host or not from_email:
+        raise ValueError("SMTP not configured")
+
+    body_r = render(body, lead or {})
+    subj_r = render(subject, lead or {})
+    if add_unsub:
+        body_r += UNSUBSCRIBE_FOOTER
+
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = subj_r
+    msg["From"]    = f"{from_name} <{from_email}>" if from_name else from_email
+    msg["To"]      = to_email
+    html_body = body_r.replace("\n", "<br>")
+    msg.attach(MIMEText(body_r, "plain", "utf-8"))
+    msg.attach(MIMEText(f"<html><body style='font-family:sans-serif'>{html_body}</body></html>",
+                        "html", "utf-8"))
+
+    conn = _build_conn(host, port, use_ssl, use_tls)
+    if user and password:
+        conn.login(user, password)
+    conn.sendmail(from_email, [to_email], msg.as_string())
+    conn.quit()
 
 
 def send_campaign(

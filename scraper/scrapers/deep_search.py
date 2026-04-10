@@ -135,11 +135,13 @@ class DeepSearcher:
         location: str,
         max_leads: int = 200,
         on_progress: Callable[[str], None] | None = None,
+        extra_queries: list[str] | None = None,
     ):
         self.niche = niche
         self.location = location
         self.max_leads = max_leads
         self.on_progress = on_progress
+        self._extra_queries = extra_queries or []
         self._seen_domains: set[str] = set()
         self._seen_queries: set[str] = set()
         self._list_pages: list[str] = []
@@ -153,6 +155,12 @@ class DeepSearcher:
     def run(self) -> list[Lead]:
         self._emit("Fetching search suggestions from autocomplete…")
         queries = generate_queries(self.niche, self.location, use_autocomplete=True)
+        # Merge AI-generated extra queries (deduplicated)
+        seen_q: set[str] = set(queries)
+        for q in self._extra_queries:
+            if q not in seen_q:
+                queries.append(q)
+                seen_q.add(q)
         self._emit(f"Generated {len(queries)} search queries (incl. autocomplete suggestions)")
 
         # Rounds 1-4: DDG text search

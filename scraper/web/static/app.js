@@ -13,6 +13,10 @@ const state = {
   statusFilter: '',
   hasEmail: false,
   hasPhone: false,
+  emailedFilter: '',  // '' | 'never' | '1' | '3' | '7' | '30' | '90'
+  calledFilter:  '',
+  tagFilter: '',
+  callbackOverdue: false,
   projects: [],
   activeProjectId: 'default',
   newProjectColor: '#6366f1',
@@ -40,6 +44,7 @@ const DEL  = (p)    => api('DELETE', p);
 document.addEventListener('DOMContentLoaded', () => {
   loadProjects();
   loadLeads();
+  _updateSortIcons();
   setInterval(loadStats, 10000);
 
   // Close project dropdown when clicking outside
@@ -65,6 +70,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Status filter
   document.getElementById('status-filter').addEventListener('change', e => {
     state.statusFilter = e.target.value;
+    _updateFilterDot();
     loadLeads();
   });
 
@@ -73,37 +79,65 @@ document.addEventListener('DOMContentLoaded', () => {
     state.hasEmail = !state.hasEmail;
     this.dataset.active = state.hasEmail;
     this.classList.toggle('active', state.hasEmail);
+    _updateFilterDot();
     loadLeads();
   });
   document.getElementById('toggle-phone').addEventListener('click', function() {
     state.hasPhone = !state.hasPhone;
     this.dataset.active = state.hasPhone;
     this.classList.toggle('active', state.hasPhone);
+    _updateFilterDot();
     loadLeads();
   });
 
-  // Sorting
-  document.querySelectorAll('th[data-col]').forEach(th => {
-    th.addEventListener('click', () => {
-      const col = th.dataset.col;
-      if (state.sortCol === col) state.sortDir = state.sortDir === 'asc' ? 'desc' : 'asc';
-      else { state.sortCol = col; state.sortDir = 'asc'; }
-      document.querySelectorAll('th').forEach(t => t.classList.remove('sorted'));
-      th.classList.add('sorted');
-      const icon = th.querySelector('.sort-icon');
-      if (icon) icon.textContent = state.sortDir === 'asc' ? '↑' : '↓';
-      applyFilters();
-    });
+  document.getElementById('filter-emailed').addEventListener('change', e => {
+    state.emailedFilter = e.target.value;
+    _updateFilterDot();
+    applyFilters();
+  });
+  document.getElementById('filter-called').addEventListener('change', e => {
+    state.calledFilter = e.target.value;
+    _updateFilterDot();
+    applyFilters();
   });
 
-  // Exports
-  document.getElementById('btn-export-csv').addEventListener('click', exportCsv);
-  document.getElementById('btn-export-xlsx').addEventListener('click', exportExcel);
-  document.getElementById('btn-export-json').addEventListener('click', exportJson);
+  // Tag filter
+  const tagInput = document.getElementById('tag-filter');
+  if (tagInput) {
+    tagInput.addEventListener('input', debounce(e => {
+      state.tagFilter = e.target.value.trim();
+      _updateFilterDot();
+      loadLeads();
+    }, 300));
+  }
+
+  // Callbacks due toggle
+  const overdueBtn = document.getElementById('toggle-overdue');
+  if (overdueBtn) {
+    overdueBtn.addEventListener('click', function() {
+      state.callbackOverdue = !state.callbackOverdue;
+      this.dataset.active = state.callbackOverdue;
+      this.classList.toggle('active', state.callbackOverdue);
+      _updateFilterDot();
+      loadLeads();
+    });
+  }
+
+  // Re-render on resize (switch table ↔ cards)
+  window.addEventListener('resize', debounce(() => {
+    renderTable();
+  }, 150));
+
+  // Sorting is handled via onclick="sortBy(col)" on each <th data-col="...">
+
+  // Exports (inside more menu — close menu after action)
+  document.getElementById('btn-export-csv').addEventListener('click', () => { closeMoreMenu(); exportCsv(); });
+  document.getElementById('btn-export-xlsx').addEventListener('click', () => { closeMoreMenu(); exportExcel(); });
+  document.getElementById('btn-export-json').addEventListener('click', () => { closeMoreMenu(); exportJson(); });
   document.getElementById('btn-new-scrape').addEventListener('click', openScrapeModal);
 
   // Import
-  document.getElementById('btn-import').addEventListener('click', openImportModal);
+  document.getElementById('btn-import').addEventListener('click', () => { closeMoreMenu(); openImportModal(); });
 
   // Settings
   document.getElementById('btn-settings').addEventListener('click', openSettingsModal);
@@ -175,10 +209,16 @@ async function loadLeads() {
   setLoading(true);
   try {
     const params = new URLSearchParams();
-    if (state.statusFilter) params.set('status', state.statusFilter);
-    if (state.hasEmail)     params.set('has_email', 'true');
-    if (state.hasPhone)     params.set('has_phone', 'true');
-    params.set('order_by', `${state.sortCol} ${state.sortDir}`);
+    if (state.statusFilter)   params.set('status', state.statusFilter);
+    if (state.hasEmail)       params.set('has_email', 'true');
+    if (state.hasPhone)       params.set('has_phone', 'true');
+    if (state.tagFilter)      params.set('tag', state.tagFilter);
+    if (state.callbackOverdue) params.set('callback_overdue', 'true');
+    // Only pass DB-sortable columns to the server; computed cols (score) are sorted client-side
+    const DB_SORT_COLS = new Set(['company_name','website','status','created_at','updated_at','niche','city']);
+    const serverCol = DB_SORT_COLS.has(state.sortCol) ? state.sortCol : 'updated_at';
+    const serverDir = DB_SORT_COLS.has(state.sortCol) ? state.sortDir : 'desc';
+    params.set('order_by', `${serverCol} ${serverDir}`);
 
     state.leads = await GET(`/api/leads?${params}`);
     await loadStats();
@@ -197,18 +237,46 @@ async function loadStats() {
   } catch {}
 }
 
+function _daysAgo(isoStr) {
+  if (!isoStr) return null;
+  const ms = Date.now() - new Date(isoStr).getTime();
+  return ms / 86400000;  // fractional days
+}
+
 function applyFilters() {
   const q = state.search.toLowerCase().trim();
   state.filtered = state.leads.filter(l => {
-    if (!q) return true;
-    return (
+    // text search
+    if (q && !(
       (l.company_name || '').toLowerCase().includes(q) ||
       (l.website      || '').toLowerCase().includes(q) ||
       (l.emails  || []).join(' ').toLowerCase().includes(q) ||
       (l.phones  || []).join(' ').toLowerCase().includes(q) ||
       (l.address || '').toLowerCase().includes(q) ||
       (l.niche   || '').toLowerCase().includes(q)
-    );
+    )) return false;
+
+    // emailed date filter
+    if (state.emailedFilter) {
+      if (state.emailedFilter === 'never') {
+        if (l.last_emailed_at) return false;
+      } else {
+        const days = _daysAgo(l.last_emailed_at);
+        if (days === null || days > parseInt(state.emailedFilter)) return false;
+      }
+    }
+
+    // called date filter
+    if (state.calledFilter) {
+      if (state.calledFilter === 'never') {
+        if (l.last_called_at) return false;
+      } else {
+        const days = _daysAgo(l.last_called_at);
+        if (days === null || days > parseInt(state.calledFilter)) return false;
+      }
+    }
+
+    return true;
   });
 
   // Sort
@@ -229,21 +297,21 @@ function applyFilters() {
 
 /* ── Render ──────────────────────────────────────────────────────────── */
 function renderStats(s) {
-  document.getElementById('stats').innerHTML = `
-    <span class="stat-pill total">
-      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
-      ${s.total ?? 0} total
-    </span>
-    <span class="stat-pill email">${s.with_email ?? 0} email</span>
-    <span class="stat-pill phone">${s.with_phone ?? 0} phone</span>
-    <span class="stat-pill both">${s.with_both ?? 0} both</span>
-    ${s.status_new > 0 ? `<span class="stat-pill" style="background:var(--blue-dim);border-color:var(--blue);color:#60a5fa">${s.status_new} new</span>` : ''}
-    ${s.status_contacted > 0 ? `<span class="stat-pill" style="background:var(--yellow-dim);border-color:var(--yellow);color:#fbbf24">${s.status_contacted} contacted</span>` : ''}
-    ${s.status_qualified > 0 ? `<span class="stat-pill" style="background:var(--green-dim);border-color:var(--green);color:#4ade80">${s.status_qualified} qualified</span>` : ''}
-  `;
+  const parts = [];
+  if (s.with_email  > 0) parts.push(`<span class="stat-chip stat-email">${s.with_email} email</span>`);
+  if (s.with_phone  > 0) parts.push(`<span class="stat-chip stat-phone">${s.with_phone} phone</span>`);
+  if (s.status_qualified > 0) parts.push(`<span class="stat-chip stat-qual">${s.status_qualified} qualified</span>`);
+  if (s.overdue_callbacks > 0) parts.push(`<span class="stat-chip stat-due">⚠ ${s.overdue_callbacks} due</span>`);
+  const sep = `<span class="stat-sep">·</span>`;
+  document.getElementById('stats').innerHTML =
+    `<span class="stat-total">${s.total ?? 0} leads</span>` +
+    (parts.length ? sep + parts.join(sep) : '');
 }
 
+function isMobile() { return window.innerWidth <= 768; }
+
 function renderTable() {
+  renderCards();
   const tbody = document.getElementById('leads-body');
   const empty = document.getElementById('empty-state');
 
@@ -259,39 +327,71 @@ function renderTable() {
     const phone  = (l.phones  || [])[0] || '';
     const name   = l.company_name || domainName(l.website);
     const web    = (l.website || '').replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '');
-    const conf   = Math.round((l.confidence || 0) * 100);
-    const confColor = conf >= 70 ? '#22c55e' : conf >= 40 ? '#f59e0b' : '#ef4444';
     const isSelected = state.selected === l.id;
     const isChecked  = state.selectedIds.has(l.id);
     const emailed = l.last_emailed_at ? `title="Last emailed: ${formatDate(l.last_emailed_at)}"` : '';
     const called  = l.last_called_at  ? `title="Last called: ${formatDate(l.last_called_at)}"` : '';
+    const score   = l.score ?? 0;
+    const scoreClass = score >= 65 ? 'score-high' : score >= 35 ? 'score-mid' : 'score-low';
+    const isOverdue = l.callback_at && new Date(l.callback_at) <= new Date();
+    const rowClass = [isSelected ? 'selected' : '', isChecked ? 'checked' : '', isOverdue ? 'overdue-row' : ''].filter(Boolean).join(' ');
+    const callbackTip = l.callback_at ? ` title="Callback: ${new Date(l.callback_at).toLocaleString()}"` : '';
 
-    return `<tr data-id="${l.id}" class="${isSelected ? 'selected' : ''} ${isChecked ? 'checked' : ''}" onclick="selectRow(${l.id})" ondblclick="openDetail(${l.id})">
-      <td class="col-check" onclick="event.stopPropagation()">
-        <input type="checkbox" class="row-check" ${isChecked ? 'checked' : ''} onchange="toggleSelect(${l.id}, this.checked)">
+    const statusVal = l.status || 'new';
+    return `<tr data-id="${l.id}" class="${rowClass}" onclick="openDetail(${l.id})"${callbackTip}>
+      <td class="col-check" onclick="toggleSelectRow(event,${l.id})">
+        <input type="checkbox" class="row-check" ${isChecked ? 'checked' : ''} onchange="toggleSelect(${l.id}, this.checked)" onclick="event.stopPropagation()">
       </td>
-      <td class="muted" style="font-size:11px">${i + 1}</td>
-      <td title="${esc(l.company_name)}">${esc(name)}${l.last_emailed_at ? ' <span class="emailed-dot" '+emailed+'></span>' : ''}${l.last_called_at ? ' <span class="called-dot" '+called+'></span>' : ''}</td>
-      <td class="mono" title="${esc(l.emails?.join(', '))}">${email ? `<span style="color:var(--blue)">${esc(email)}</span>` : '<span class="muted">—</span>'}</td>
-      <td class="mono" style="color:var(--yellow)">${esc(phone) || '<span class="muted">—</span>'}</td>
-      <td class="website" onclick="openWebsite(event,'${esc(l.website)}')" title="${esc(l.website)}">${esc(web) || '—'}</td>
-      <td class="muted" title="${esc(l.niche)}">${esc(l.niche || '—')}</td>
-      <td>
-        <div class="conf-bar">
-          <div class="conf-track"><div class="conf-fill" style="width:${conf}%;background:${confColor}"></div></div>
-          <span class="conf-label" style="color:${confColor}">${conf}%</span>
+      <td class="col-company" title="${esc(l.company_name || l.website)}">
+        <div class="lead-name">${esc(name)}</div>
+        <div class="lead-meta">
+          ${l.niche ? `<span class="meta-niche">${esc(l.niche)}</span>` : ''}
+          ${(l.tags||[]).map(t => `<span class="tag-pill" onclick="filterByTag(event,'${esc(t)}')">${esc(t)}</span>`).join('')}
+          ${l.last_emailed_at ? `<span class="meta-dot emailed-dot" ${emailed}></span>` : ''}
+          ${l.last_called_at  ? `<span class="meta-dot called-dot"  ${called}></span>`  : ''}
         </div>
       </td>
-      <td><span class="badge ${l.status || 'new'}">${(l.status || 'new').charAt(0).toUpperCase() + (l.status || 'new').slice(1)}</span></td>
+      <td class="mono" title="${esc(l.emails?.join(', '))}" onclick="event.stopPropagation();copyCell(event,'${esc(email)}')">${email ? `<span class="email-val copy-cell">${esc(email)}</span>` : '<span class="muted">—</span>'}</td>
+      <td class="mono" title="${esc(phone)}" onclick="event.stopPropagation();copyCell(event,'${esc(phone)}')">${phone ? `<span class="phone-val copy-cell">${esc(phone)}</span>` : '<span class="muted">—</span>'}</td>
+      <td class="website" onclick="openWebsite(event,'${esc(l.website)}')" title="${esc(l.website)}">${esc(web) || '<span class="muted">—</span>'}</td>
+      <td style="text-align:center"><span class="score-badge ${scoreClass}">${score}</span></td>
+      <td onclick="event.stopPropagation()"><span class="badge ${statusVal} clickable-badge" onclick="cycleStatus(${l.id})" title="Click to cycle status">${statusVal.charAt(0).toUpperCase() + statusVal.slice(1)}</span></td>
       <td><button class="row-action" onclick="deleteRow(event,${l.id})" title="Delete">✕</button></td>
     </tr>`;
   }).join('');
   updateSelectionBar();
+  _updateSortIcons();
 }
 
 /* ── Row selection ───────────────────────────────────────────────────── */
+let _lastCheckedIdx = -1;
+
 function selectRow(id) {
-  state.selected = state.selected === id ? null : id;
+  state.selected = id;
+  // Highlight without re-rendering the whole table
+  document.querySelectorAll('#leads-table tbody tr').forEach(tr => {
+    tr.classList.toggle('selected', parseInt(tr.dataset.id) === id);
+  });
+}
+
+function toggleSelectRow(e, id) {
+  e.stopPropagation();
+  const idx = state.filtered.findIndex(l => l.id === id);
+  if (e.shiftKey && _lastCheckedIdx >= 0 && idx >= 0) {
+    // Range select
+    const lo = Math.min(_lastCheckedIdx, idx);
+    const hi = Math.max(_lastCheckedIdx, idx);
+    const addOrRemove = !state.selectedIds.has(id);
+    for (let i = lo; i <= hi; i++) {
+      if (addOrRemove) state.selectedIds.add(state.filtered[i].id);
+      else state.selectedIds.delete(state.filtered[i].id);
+    }
+  } else {
+    if (state.selectedIds.has(id)) state.selectedIds.delete(id);
+    else state.selectedIds.add(id);
+    _lastCheckedIdx = idx;
+  }
+  updateSelectionBar();
   renderTable();
 }
 
@@ -308,7 +408,7 @@ async function openDetail(id) {
     ).join('') || '<span class="muted">—</span>';
 
     const phoneTags = (l.phones || []).map(p =>
-      `<span class="tag phone">${esc(p)}</span>`
+      `<span class="tag phone" onclick="copyText('${esc(p)}')" title="Click to copy" style="cursor:pointer">${esc(p)}</span>`
     ).join('') || '<span class="muted">—</span>';
 
     document.getElementById('detail-grid').innerHTML = `
@@ -326,36 +426,52 @@ async function openDetail(id) {
       </div>
       <div class="detail-field">
         <label>Company Name</label>
-        <div class="value">${esc(l.company_name) || '—'}</div>
+        <input type="text" id="detail-company-name" value="${esc(l.company_name || '')}" placeholder="Company name" style="width:100%">
       </div>
       <div class="detail-field">
         <label>Niche</label>
-        <div class="value">${esc(l.niche) || '—'}</div>
+        <input type="text" id="detail-niche" value="${esc(l.niche || '')}" placeholder="e.g. restaurant" style="width:100%">
       </div>
       <div class="detail-field full">
         <label>Address</label>
         <div class="value">${esc(l.address) || '—'}</div>
       </div>
       <div class="detail-field">
+        <label>Contact Name</label>
+        <input type="text" id="detail-contact-name" value="${esc(l.contact_name || '')}" placeholder="e.g. John Smith" style="width:100%">
+      </div>
+      <div class="detail-field">
+        <label>Contact Title</label>
+        <input type="text" id="detail-contact-title" value="${esc(l.contact_title || '')}" placeholder="e.g. CEO" style="width:100%">
+      </div>
+      <div class="detail-field">
         <label>Sources</label>
         <div class="value mono" style="font-size:11px">${esc((l.sources || []).join(', ')) || '—'}</div>
       </div>
       <div class="detail-field">
-        <label>Confidence</label>
-        <div class="value">${Math.round((l.confidence || 0) * 100)}%</div>
+        <label>Score</label>
+        <div class="value">${l.score ?? 0} / 100</div>
       </div>
       <div class="divider"></div>
       <div class="detail-field">
         <label>Status</label>
         <select class="status-select" id="detail-status">
-          ${['new','contacted','qualified','rejected'].map(s =>
+          ${['new','contacted','warm','qualified','rejected'].map(s =>
             `<option value="${s}" ${l.status === s ? 'selected' : ''}>${s.charAt(0).toUpperCase()+s.slice(1)}</option>`
           ).join('')}
         </select>
       </div>
       <div class="detail-field">
+        <label>Callback Date</label>
+        <input type="datetime-local" id="detail-callback-at" value="${l.callback_at ? l.callback_at.slice(0,16) : ''}" style="width:100%">
+      </div>
+      <div class="detail-field">
         <label>Added</label>
         <div class="value muted" style="font-size:11px">${formatDate(l.created_at)}</div>
+      </div>
+      <div class="detail-field full">
+        <label>Tags</label>
+        <input type="text" id="detail-tags" value="${esc((l.tags || []).join(', '))}" placeholder="tag1, tag2, tag3" style="width:100%">
       </div>
       <div class="detail-field full">
         <label>Notes</label>
@@ -364,6 +480,20 @@ async function openDetail(id) {
     `;
 
     document.getElementById('detail-modal').classList.add('open');
+
+    // Cross-project duplicate check (non-blocking)
+    GET(`/api/leads/${id}/duplicates`).then(dupes => {
+      if (!dupes || !dupes.length) return;
+      const banner = document.createElement('div');
+      banner.className = 'dupe-banner';
+      banner.innerHTML = `
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        Found in ${dupes.length} other project${dupes.length > 1 ? 's' : ''}:
+        ${dupes.map(d => `<span class="dupe-pill" style="border-color:${esc(d.project_color)};color:${esc(d.project_color)}">${esc(d.project_name)}</span>`).join('')}
+      `;
+      const grid = document.getElementById('detail-grid');
+      if (grid) grid.parentNode.insertBefore(banner, grid);
+    }).catch(() => {});
   } catch(e) {
     toast('Failed to load lead', 'error');
   }
@@ -378,8 +508,16 @@ async function saveDetail() {
   if (!state.currentDetailId) return;
   const status = document.getElementById('detail-status').value;
   const notes  = document.getElementById('detail-notes').value;
+  const tagsRaw = document.getElementById('detail-tags').value;
+  const tags = tagsRaw.split(',').map(t => t.trim()).filter(Boolean);
+  const callbackRaw = document.getElementById('detail-callback-at').value;
+  const callback_at = callbackRaw ? callbackRaw.replace('T', ' ') + ':00' : '';
+  const contact_name  = document.getElementById('detail-contact-name')?.value.trim()  || '';
+  const contact_title = document.getElementById('detail-contact-title')?.value.trim() || '';
+  const company_name  = document.getElementById('detail-company-name')?.value.trim()  || '';
+  const niche         = document.getElementById('detail-niche')?.value.trim()         || '';
   try {
-    await PUT(`/api/leads/${state.currentDetailId}`, { status, notes });
+    await PUT(`/api/leads/${state.currentDetailId}`, { status, notes, tags, callback_at, contact_name, contact_title, company_name, niche });
     toast('Saved', 'success');
     closeDetailModal();
     loadLeads();
@@ -415,10 +553,27 @@ function openWebsite(event, url) {
 }
 
 /* ── Scrape Modal ────────────────────────────────────────────────────── */
-function openScrapeModal() {
+async function openScrapeModal() {
   resetScrapeModal();
   document.getElementById('scrape-modal').classList.add('open');
   document.getElementById('scrape-niche').focus();
+  // Check AI and Maps key availability
+  try {
+    const s = await GET('/api/settings');
+    const aiWrap   = document.getElementById('ai-option-wrap');
+    const aiStatus = document.getElementById('ai-option-status');
+    const aiCheck  = document.getElementById('scrape-use-ai');
+    if (aiWrap)   { aiWrap.style.opacity = s._has_anthropic ? '1' : '0.5'; }
+    if (aiStatus) { aiStatus.textContent = s._has_anthropic ? '✓ ready' : '(configure in Settings → AI)'; }
+    if (aiCheck)  { aiCheck.disabled = !s._has_anthropic; }
+
+    const mapsWrap   = document.getElementById('maps-option-wrap');
+    const mapsStatus = document.getElementById('maps-option-status');
+    const mapsCheck  = document.getElementById('scrape-maps');
+    if (mapsStatus) { mapsStatus.textContent = s._has_maps ? '✓ API key set' : '(DDG fallback)'; }
+    if (mapsWrap)   { mapsWrap.style.opacity = '1'; }
+    if (mapsCheck)  { mapsCheck.disabled = false; }
+  } catch(e) {}
 }
 
 function closeScrapeModal() {
@@ -444,13 +599,15 @@ async function startScrape() {
   const niche    = document.getElementById('scrape-niche').value.trim();
   const location = document.getElementById('scrape-location').value.trim();
   const maxLeads = parseInt(document.getElementById('scrape-max').value) || 100;
+  const useAi    = document.getElementById('scrape-use-ai')?.checked || false;
+  const social   = document.getElementById('scrape-social')?.checked || false;
+  const inclMaps = document.getElementById('scrape-maps')?.checked || false;
 
   if (!niche) {
     document.getElementById('scrape-niche').focus();
     return;
   }
 
-  // Show progress UI
   const log      = document.getElementById('scrape-log');
   const progBar  = document.getElementById('scrape-progress-bar');
   const stats    = document.getElementById('scrape-stats');
@@ -464,11 +621,17 @@ async function startScrape() {
   document.getElementById('btn-scrape-close').textContent = 'Running…';
 
   try {
-    const { job_id } = await api('POST', '/api/scrape', { niche, location, max_leads: maxLeads });
+    const { job_id } = await api('POST', '/api/scrape', {
+      niche, location, max_leads: maxLeads,
+      use_ai: useAi, include_social: social, include_maps: inclMaps,
+    });
     state.currentJobId = job_id;
     listenToJob(job_id);
   } catch(e) {
     appendLog('error', 'Failed to start scrape: ' + e.message);
+    document.getElementById('btn-scrape-start').style.display = '';
+    document.getElementById('btn-scrape-stop').style.display = 'none';
+    document.getElementById('btn-scrape-close').textContent = 'Close';
   }
 }
 
@@ -631,7 +794,10 @@ function handleKeyboard(e) {
     case '/': document.getElementById('search').focus(); e.preventDefault(); break;
     case 'e': exportCsv(); break;
     case 'm': if (state.selectedIds.size > 0) openEmailModal(); break;
-    case 'escape': state.selected = null; renderTable(); break;
+    case 'escape':
+      if (state.selectedIds.size) { deselectAll(); }
+      else { state.selected = null; document.querySelectorAll('#leads-table tbody tr.selected').forEach(tr => tr.classList.remove('selected')); }
+      break;
     case 'enter':
       if (state.selected) { openDetail(state.selected); e.preventDefault(); }
       break;
@@ -660,11 +826,10 @@ function handleKeyboard(e) {
     case 'arrowdown':
     case 'arrowup': {
       const ids = state.filtered.map(l => l.id);
-      const idx = ids.indexOf(state.selected);
-      const next = e.key === 'arrowdown' ? idx + 1 : idx - 1;
+      const idx = ids.indexOf(state.selected ?? -1);
+      const next = e.key === 'arrowdown' ? (idx < 0 ? 0 : idx + 1) : (idx <= 0 ? 0 : idx - 1);
       if (next >= 0 && next < ids.length) {
-        state.selected = ids[next];
-        renderTable();
+        selectRow(ids[next]);
         document.querySelector(`tr[data-id="${state.selected}"]`)?.scrollIntoView({ block: 'nearest' });
       }
       e.preventDefault();
@@ -674,7 +839,7 @@ function handleKeyboard(e) {
 }
 
 async function cycleStatus(id) {
-  const order = ['new', 'contacted', 'qualified', 'rejected'];
+  const order = ['new', 'contacted', 'warm', 'qualified', 'rejected'];
   const l = state.leads.find(x => x.id === id);
   if (!l) return;
   const next = order[(order.indexOf(l.status) + 1) % order.length];
@@ -682,6 +847,78 @@ async function cycleStatus(id) {
   toast(`Status → ${next}`, 'success');
   loadLeads();
 }
+
+/* ── Filter panel toggle ─────────────────────────────────────────────── */
+let _filtersOpen = false;
+
+function toggleFilters() {
+  _filtersOpen = !_filtersOpen;
+  const panel = document.getElementById('filter-panel');
+  const btn   = document.getElementById('btn-filter-toggle');
+  if (panel) panel.classList.toggle('open', _filtersOpen);
+  if (btn)   btn.classList.toggle('active', _filtersOpen);
+}
+
+function resetFilters() {
+  state.statusFilter  = '';
+  state.hasEmail      = false;
+  state.hasPhone      = false;
+  state.emailedFilter = '';
+  state.calledFilter  = '';
+  state.tagFilter     = '';
+  state.callbackOverdue = false;
+  const els = {
+    'status-filter':   v => { const e = document.getElementById(v); if(e) e.value = ''; },
+    'filter-emailed':  v => { const e = document.getElementById(v); if(e) e.value = ''; },
+    'filter-called':   v => { const e = document.getElementById(v); if(e) e.value = ''; },
+    'tag-filter':      v => { const e = document.getElementById(v); if(e) e.value = ''; },
+  };
+  Object.keys(els).forEach(k => els[k](k));
+  ['toggle-email','toggle-phone','toggle-overdue'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) { el.dataset.active = 'false'; el.classList.remove('active'); }
+  });
+  _updateFilterDot();
+  loadLeads();
+}
+
+/* ── Column sorting ──────────────────────────────────────────────────── */
+function sortBy(col) {
+  if (!col) return;
+  if (state.sortCol === col) {
+    state.sortDir = state.sortDir === 'asc' ? 'desc' : 'asc';
+  } else {
+    state.sortCol = col;
+    // score: highest first; company_name: A-Z; everything else: latest first
+    state.sortDir = col === 'company_name' ? 'asc' : 'desc';
+  }
+  _updateSortIcons();
+  loadLeads();
+}
+
+function _updateSortIcons() {
+  document.querySelectorAll('#leads-table thead th[data-col]').forEach(th => {
+    const icon = th.querySelector('.sort-icon');
+    if (!icon) return;
+    if (th.dataset.col === state.sortCol) {
+      icon.textContent = state.sortDir === 'asc' ? '↑' : '↓';
+      icon.classList.add('active');
+    } else {
+      icon.textContent = '↕';
+      icon.classList.remove('active');
+    }
+  });
+}
+
+/* ── More Menu ───────────────────────────────────────────────────────── */
+function toggleMoreMenu(e) {
+  e.stopPropagation();
+  document.getElementById('more-menu').classList.toggle('open');
+}
+function closeMoreMenu() {
+  document.getElementById('more-menu').classList.remove('open');
+}
+document.addEventListener('click', () => closeMoreMenu());
 
 /* ── Utilities ───────────────────────────────────────────────────────── */
 function setLoading(v) {
@@ -700,6 +937,22 @@ async function copyText(text) {
   try {
     await navigator.clipboard.writeText(text);
     toast(`Copied: ${text}`, 'success');
+  } catch {
+    toast('Copy failed', 'error');
+  }
+}
+
+async function copyCell(e, text) {
+  if (!text) return;
+  try {
+    await navigator.clipboard.writeText(text);
+    // Brief flash on the cell
+    const cell = e.currentTarget || e.target.closest('td');
+    if (cell) {
+      cell.classList.add('copied-flash');
+      setTimeout(() => cell.classList.remove('copied-flash'), 600);
+    }
+    toast(`Copied: ${text}`, 'success', 1800);
   } catch {
     toast('Copy failed', 'error');
   }
@@ -757,6 +1010,33 @@ function toggleSelectAll(checkbox) {
   renderTable();
 }
 
+async function bulkUpdateStatus(status) {
+  const ids = [...state.selectedIds];
+  if (!ids.length) return;
+  try {
+    const r = await api('POST', '/api/leads/bulk-status', { lead_ids: ids, status });
+    toast(`Updated ${r.updated} leads to "${status}"`, 'success');
+    deselectAll();
+    loadLeads();
+  } catch {
+    toast('Bulk update failed', 'error');
+  }
+}
+
+async function bulkDelete() {
+  const ids = [...state.selectedIds];
+  if (!ids.length) return;
+  if (!confirm(`Delete ${ids.length} lead${ids.length > 1 ? 's' : ''}? This cannot be undone.`)) return;
+  try {
+    await api('DELETE', '/api/leads?' + ids.map(id => `ids=${id}`).join('&'));
+    toast(`Deleted ${ids.length} lead${ids.length > 1 ? 's' : ''}`, 'success');
+    deselectAll();
+    loadLeads();
+  } catch {
+    toast('Delete failed', 'error');
+  }
+}
+
 function deselectAll() {
   state.selectedIds.clear();
   const cb = document.getElementById('select-all');
@@ -769,8 +1049,96 @@ function updateSelectionBar() {
   const bar = document.getElementById('selection-bar');
   bar.classList.toggle('visible', n > 0);
   const withEmail = state.leads.filter(l => state.selectedIds.has(l.id) && l.emails?.length > 0).length;
-  document.getElementById('selection-count').textContent =
-    `${n} selected${withEmail < n ? ` (${withEmail} have email)` : ''}`;
+  const parts = [`${n} lead${n !== 1 ? 's' : ''} selected`];
+  if (withEmail < n && withEmail > 0) parts.push(`${withEmail} with email`);
+  else if (withEmail === 0 && n > 0) parts.push('none have email');
+  document.getElementById('selection-count').textContent = parts.join(' · ');
+}
+
+/* ── Card view (mobile) ──────────────────────────────────────────────── */
+function renderCards() {
+  const cardView = document.getElementById('card-view');
+  const table    = document.getElementById('leads-table');
+  if (!cardView) return;
+
+  if (!isMobile()) {
+    cardView.style.display = 'none';
+    table.style.display = '';
+    return;
+  }
+
+  table.style.display = 'none';
+  cardView.style.display = '';
+
+  if (!state.filtered.length) {
+    cardView.innerHTML = '';
+    return;
+  }
+
+  cardView.innerHTML = state.filtered.map(l => {
+    const email   = (l.emails  || [])[0] || '';
+    const phone   = (l.phones  || [])[0] || '';
+    const name    = l.company_name || domainName(l.website) || '—';
+    const web     = (l.website || '').replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '');
+    const conf    = Math.round((l.confidence || 0) * 100);
+    const confColor = conf >= 70 ? '#22c55e' : conf >= 40 ? '#f59e0b' : '#ef4444';
+    const isChecked = state.selectedIds.has(l.id);
+    const status    = l.status || 'new';
+    const emailed   = l.last_emailed_at ? `title="Emailed: ${formatDate(l.last_emailed_at)}"` : '';
+    const called    = l.last_called_at  ? `title="Called: ${formatDate(l.last_called_at)}"` : '';
+
+    return `<div class="lead-card ${isChecked ? 'checked' : ''}" data-id="${l.id}" onclick="cardTap(event, ${l.id})">
+      <div class="lead-card-check">
+        <input type="checkbox" ${isChecked ? 'checked' : ''} onchange="toggleSelect(${l.id}, this.checked)" onclick="event.stopPropagation()">
+      </div>
+      <div class="lead-card-body">
+        <div class="lead-card-title">
+          ${esc(name)}
+          ${l.last_emailed_at ? `<span class="emailed-dot" ${emailed}></span>` : ''}
+          ${l.last_called_at  ? `<span class="called-dot"  ${called}></span>`  : ''}
+        </div>
+        <div class="lead-card-meta">
+          ${email ? `<a class="lead-card-email" href="mailto:${esc(email)}" onclick="event.stopPropagation()">${esc(email)}</a>` : '<span class="lead-card-none">no email</span>'}
+          ${phone ? `<a class="lead-card-phone" href="tel:${esc(phone)}" onclick="event.stopPropagation()">${esc(phone)}</a>` : ''}
+        </div>
+        ${web ? `<div class="lead-card-web">${esc(web)}</div>` : ''}
+      </div>
+      <div class="lead-card-right">
+        <span class="badge ${status}">${status.charAt(0).toUpperCase() + status.slice(1)}</span>
+        <span class="lead-card-conf" style="color:${confColor}">${conf}%</span>
+      </div>
+    </div>`;
+  }).join('');
+
+  // Update select-all checkbox state
+  const all = document.getElementById('select-all');
+  if (all) all.checked = state.selectedIds.size > 0 &&
+    state.filtered.every(l => state.selectedIds.has(l.id));
+}
+
+function cardTap(event, id) {
+  if (event.target.tagName === 'INPUT' || event.target.tagName === 'A') return;
+  openDetail(id);
+}
+
+/* ── Mobile filter toggle ────────────────────────────────────────────── */
+let _mobileFiltersOpen = false;
+
+function toggleMobileFilters() {
+  _mobileFiltersOpen = !_mobileFiltersOpen;
+  const fg  = document.getElementById('filter-group');
+  const btn = document.getElementById('btn-filter-toggle');
+  fg.classList.toggle('open', _mobileFiltersOpen);
+  btn.classList.toggle('active', _mobileFiltersOpen);
+}
+
+function _updateFilterDot() {
+  const active = !!(state.statusFilter || state.hasEmail || state.hasPhone ||
+    state.emailedFilter || state.calledFilter || state.tagFilter || state.callbackOverdue);
+  const dot = document.getElementById('filter-active-dot');
+  if (dot) dot.style.display = active ? '' : 'none';
+  const btn = document.getElementById('btn-filter-toggle');
+  if (btn) btn.classList.toggle('active', active || _filtersOpen);
 }
 
 /* ── Email Campaign ──────────────────────────────────────────────────── */
@@ -789,6 +1157,7 @@ function openEmailModal() {
 
   document.getElementById('email-modal').classList.add('open');
   document.getElementById('email-subject').focus();
+  loadScriptsList();
 }
 
 function closeEmailModal() {
@@ -805,6 +1174,7 @@ async function sendEmailCampaign() {
   if (!state.selectedIds.size) { toast('No leads selected', 'error'); return; }
 
   const autoContacted = document.getElementById('email-auto-contacted').checked;
+  const validateEmails = document.getElementById('email-validate')?.checked !== false;
   const leadIds = [...state.selectedIds];
 
   // Switch to progress view
@@ -820,7 +1190,7 @@ async function sendEmailCampaign() {
 
   try {
     const { job_id } = await api('POST', '/api/email/send', {
-      lead_ids: leadIds, subject, body, auto_contacted: autoContacted
+      lead_ids: leadIds, subject, body, auto_contacted: autoContacted, validate_emails: validateEmails
     });
     state.currentEmailJobId = job_id;
     listenToEmailJob(job_id, leadIds.length);
@@ -895,35 +1265,55 @@ function insertMergeTag(tag) {
 /* ── Settings ────────────────────────────────────────────────────────── */
 async function openSettingsModal() {
   try {
-    const [s, envData] = await Promise.all([
-      GET(`/api/settings?project_id=${state.activeProjectId}`),
+    const isDefault = state.activeProjectId === 'default';
+    const [globalS, projS, envData] = await Promise.all([
+      GET('/api/settings'),
+      isDefault ? Promise.resolve({}) : GET(`/api/settings?project_id=${state.activeProjectId}`),
       GET(`/api/env?project_id=${state.activeProjectId}`),
     ]);
 
-    document.getElementById('s-smtp-host').value   = s.smtp_host  || '';
-    document.getElementById('s-smtp-port').value   = s.smtp_port  || 587;
-    document.getElementById('s-smtp-ssl').checked  = !!s.smtp_ssl;
-    document.getElementById('s-smtp-starttls').checked = s.smtp_starttls !== false;
-    document.getElementById('s-smtp-user').value   = s.smtp_user  || '';
+    // Global SMTP tab
+    document.getElementById('s-smtp-host').value   = globalS.smtp_host  || '';
+    document.getElementById('s-smtp-port').value   = globalS.smtp_port  || 587;
+    document.getElementById('s-smtp-ssl').checked  = !!globalS.smtp_ssl;
+    document.getElementById('s-smtp-starttls').checked = globalS.smtp_starttls !== false;
+    document.getElementById('s-smtp-user').value   = globalS.smtp_user  || '';
     document.getElementById('s-smtp-password').value = '';
-    document.getElementById('s-from-name').value   = s.from_name  || '';
-    document.getElementById('s-from-email').value  = s.from_email || '';
-    document.getElementById('s-delay-min').value   = s.delay_min  ?? 5;
-    document.getElementById('s-delay-max').value   = s.delay_max  ?? 15;
-    document.getElementById('s-daily-limit').value = s.daily_limit ?? 500;
-    document.getElementById('s-unsubscribe-footer').checked = s.unsubscribe_footer !== false;
+    document.getElementById('s-from-name').value   = globalS.from_name  || '';
+    document.getElementById('s-from-email').value  = globalS.from_email || '';
+
+    // Project SMTP tab
+    const proj = state.projects.find(p => p.id === state.activeProjectId);
+    document.getElementById('proj-smtp-name').textContent = proj?.name || 'this project';
+    document.getElementById('ps-smtp-host').value   = projS.smtp_host  || '';
+    document.getElementById('ps-smtp-port').value   = projS.smtp_port  || '';
+    document.getElementById('ps-smtp-ssl').checked  = !!projS.smtp_ssl;
+    document.getElementById('ps-smtp-starttls').checked = !!projS.smtp_starttls;
+    document.getElementById('ps-smtp-user').value   = projS.smtp_user  || '';
+    document.getElementById('ps-smtp-password').value = '';
+    document.getElementById('ps-from-name').value   = projS.from_name  || '';
+    document.getElementById('ps-from-email').value  = projS.from_email || '';
+    document.getElementById('proj-smtp-test-result').textContent = '';
+    // Hide project SMTP tab for default project
+    document.querySelector('.settings-tab[data-tab="proj-smtp"]').style.display =
+      isDefault ? 'none' : '';
+
+    // Sending
+    document.getElementById('s-delay-min').value   = globalS.delay_min  ?? 5;
+    document.getElementById('s-delay-max').value   = globalS.delay_max  ?? 15;
+    document.getElementById('s-daily-limit').value = globalS.daily_limit ?? 500;
+    document.getElementById('s-unsubscribe-footer').checked = globalS.unsubscribe_footer !== false;
 
     // Env files
     document.getElementById('s-global-env').value  = envData.global  || '';
     document.getElementById('s-project-env').value = envData.project || '';
-    const isDefault = state.activeProjectId === 'default';
     document.getElementById('s-project-env-wrap').style.opacity = isDefault ? '0.4' : '1';
     document.getElementById('s-project-env-label').textContent =
       isDefault ? '(switch to a non-default project to set project vars)' :
       `(~/.scraper/projects/${state.activeProjectId}/.env)`;
 
-    // Disable env-locked fields
-    const locked = s._env_locked || [];
+    // Env-locked fields (global tab)
+    const locked = globalS._env_locked || [];
     const fieldMap = { smtp_host:'s-smtp-host', smtp_port:'s-smtp-port',
       smtp_user:'s-smtp-user', smtp_password:'s-smtp-password',
       from_name:'s-from-name', from_email:'s-from-email' };
@@ -937,6 +1327,39 @@ async function openSettingsModal() {
     });
     document.getElementById('settings-env-notice').style.display = locked.length ? '' : 'none';
     document.getElementById('smtp-test-result').textContent = '';
+
+    // Load scripts + sequences
+    await loadScriptsList();
+    await loadSequences();
+    // AI key status
+    const aiStatus = document.getElementById('ai-option-status');
+    if (aiStatus) aiStatus.textContent = globalS._has_anthropic ? '✓ configured' : '(no key set)';
+    document.getElementById('s-anthropic-key').value = '';
+
+    // Maps key + Base URL
+    const mapsKeyEl = document.getElementById('s-maps-key');
+    if (mapsKeyEl) mapsKeyEl.value = globalS._has_maps ? '••••••••' : '';
+    const baseUrlEl = document.getElementById('s-base-url');
+    if (baseUrlEl) baseUrlEl.value = globalS.base_url || '';
+
+    // IMAP settings
+    const iEl = k => document.getElementById(k);
+    if (iEl('s-imap-host'))     iEl('s-imap-host').value     = globalS.imap_host     || '';
+    if (iEl('s-imap-port'))     iEl('s-imap-port').value     = globalS.imap_port     || 993;
+    if (iEl('s-imap-ssl'))      iEl('s-imap-ssl').checked    = globalS.imap_ssl      !== false;
+    if (iEl('s-imap-user'))     iEl('s-imap-user').value     = globalS.imap_user     || '';
+    if (iEl('s-imap-password')) iEl('s-imap-password').value = '';
+    if (iEl('s-imap-folder'))   iEl('s-imap-folder').value   = globalS.imap_folder   || 'INBOX';
+    if (iEl('s-imap-interval')) iEl('s-imap-interval').value = globalS.imap_interval || 10;
+    // IMAP status
+    try {
+      const imapSt = await GET('/api/imap/status');
+      const lbl = document.getElementById('imap-status-label');
+      if (lbl) lbl.textContent = imapSt.running ? `Running — last check: ${imapSt.last_check || 'never'}` : 'Not running';
+    } catch {}
+
+    // Webhooks list
+    await loadWebhooks();
   } catch(e) {
     toast('Failed to load settings', 'error');
   }
@@ -956,8 +1379,11 @@ function switchTab(btn) {
 }
 
 async function saveSettings() {
+  const isDefault = state.activeProjectId === 'default';
+
+  // Global SMTP + sending
   const pw = document.getElementById('s-smtp-password').value;
-  const updates = {
+  const globalUpdates = {
     smtp_host:     document.getElementById('s-smtp-host').value.trim(),
     smtp_port:     parseInt(document.getElementById('s-smtp-port').value) || 587,
     smtp_ssl:      document.getElementById('s-smtp-ssl').checked,
@@ -971,18 +1397,68 @@ async function saveSettings() {
     unsubscribe_footer: document.getElementById('s-unsubscribe-footer').checked,
     _scope: 'global',
   };
-  if (pw && !pw.includes('•')) updates.smtp_password = pw;
+  if (pw && !pw.includes('•')) globalUpdates.smtp_password = pw;
 
-  const globalEnv  = document.getElementById('s-global-env').value;
-  const projectEnv = document.getElementById('s-project-env').value;
-  const isDefault  = state.activeProjectId === 'default';
+  // Project SMTP (non-default only)
+  const calls = [
+    api('PUT', '/api/settings', globalUpdates),
+    api('PUT', '/api/env', { content: document.getElementById('s-global-env').value, project_id: null }),
+  ];
+  if (!isDefault) {
+    const ppw = document.getElementById('ps-smtp-password').value;
+    const projPort = parseInt(document.getElementById('ps-smtp-port').value);
+    const projUpdates = {
+      smtp_host:     document.getElementById('ps-smtp-host').value.trim(),
+      smtp_ssl:      document.getElementById('ps-smtp-ssl').checked,
+      smtp_starttls: document.getElementById('ps-smtp-starttls').checked,
+      smtp_user:     document.getElementById('ps-smtp-user').value.trim(),
+      from_name:     document.getElementById('ps-from-name').value.trim(),
+      from_email:    document.getElementById('ps-from-email').value.trim(),
+      _scope: 'project',
+    };
+    if (projPort) projUpdates.smtp_port = projPort;
+    if (ppw && !ppw.includes('•')) projUpdates.smtp_password = ppw;
+    calls.push(api('PUT', `/api/settings?project_id=${state.activeProjectId}`, projUpdates));
+    calls.push(api('PUT', '/api/env', {
+      content: document.getElementById('s-project-env').value,
+      project_id: state.activeProjectId,
+    }));
+  }
+
+  // Save Anthropic API key if provided
+  const anthropicKey = document.getElementById('s-anthropic-key')?.value.trim();
+  if (anthropicKey && !anthropicKey.includes('•')) {
+    calls.push(api('PUT', '/api/settings', { anthropic_api_key: anthropicKey, _scope: 'global' }));
+  }
+
+  // Save Maps key if provided
+  const mapsKey = document.getElementById('s-maps-key')?.value.trim();
+  if (mapsKey && !mapsKey.includes('•')) {
+    calls.push(api('PUT', '/api/settings', { google_maps_api_key: mapsKey, _scope: 'global' }));
+  }
+
+  // Save Base URL
+  const baseUrl = document.getElementById('s-base-url')?.value.trim();
+  if (baseUrl !== undefined) {
+    calls.push(api('PUT', '/api/settings', { base_url: baseUrl, _scope: 'global' }));
+  }
+
+  // Save IMAP settings
+  const imapUpdates = { _scope: 'global' };
+  const imapHost = document.getElementById('s-imap-host')?.value.trim();
+  const imapUser = document.getElementById('s-imap-user')?.value.trim();
+  const imapPass = document.getElementById('s-imap-password')?.value;
+  if (imapHost !== undefined) imapUpdates.imap_host = imapHost;
+  if (imapUser !== undefined) imapUpdates.imap_user = imapUser;
+  if (imapPass && !imapPass.includes('•')) imapUpdates.imap_password = imapPass;
+  imapUpdates.imap_port     = parseInt(document.getElementById('s-imap-port')?.value)     || 993;
+  imapUpdates.imap_ssl      = document.getElementById('s-imap-ssl')?.checked              !== false;
+  imapUpdates.imap_folder   = document.getElementById('s-imap-folder')?.value.trim()      || 'INBOX';
+  imapUpdates.imap_interval = parseInt(document.getElementById('s-imap-interval')?.value) || 10;
+  calls.push(api('PUT', '/api/settings', imapUpdates));
 
   try {
-    await Promise.all([
-      api('PUT', '/api/settings', updates),
-      api('PUT', '/api/env', { content: globalEnv, project_id: null }),
-      ...(isDefault ? [] : [api('PUT', '/api/env', { content: projectEnv, project_id: state.activeProjectId })]),
-    ]);
+    await Promise.all(calls);
     toast('Settings saved', 'success');
     closeSettingsModal();
   } catch(e) {
@@ -1101,26 +1577,35 @@ async function createProject() {
 }
 
 /* ── Settings — env tab ──────────────────────────────────────────────── */
-async function testSmtp() {
-  const btn = document.getElementById('btn-test-smtp');
-  const result = document.getElementById('smtp-test-result');
+async function testSmtp(scope = 'global') {
+  const isProject = scope === 'project';
+  const btnId     = isProject ? 'btn-test-proj-smtp' : 'btn-test-smtp';
+  const resultId  = isProject ? 'proj-smtp-test-result' : 'smtp-test-result';
+  const prefix    = isProject ? 'ps' : 's';
+
+  const btn    = document.getElementById(btnId);
+  const result = document.getElementById(resultId);
   btn.disabled = true;
   result.textContent = 'Testing…';
   result.style.color = 'var(--text-muted)';
   try {
     // Save first so we test current values
-    const pw = document.getElementById('s-smtp-password').value;
+    const pw = document.getElementById(`${prefix}-smtp-password`).value;
     const updates = {
-      smtp_host:     document.getElementById('s-smtp-host').value.trim(),
-      smtp_port:     parseInt(document.getElementById('s-smtp-port').value) || 587,
-      smtp_ssl:      document.getElementById('s-smtp-ssl').checked,
-      smtp_starttls: document.getElementById('s-smtp-starttls').checked,
-      smtp_user:     document.getElementById('s-smtp-user').value.trim(),
-      from_email:    document.getElementById('s-from-email').value.trim(),
+      smtp_host:     document.getElementById(`${prefix}-smtp-host`).value.trim(),
+      smtp_port:     parseInt(document.getElementById(`${prefix}-smtp-port`).value) || 587,
+      smtp_ssl:      document.getElementById(`${prefix}-smtp-ssl`).checked,
+      smtp_starttls: document.getElementById(`${prefix}-smtp-starttls`).checked,
+      smtp_user:     document.getElementById(`${prefix}-smtp-user`).value.trim(),
+      from_email:    document.getElementById(`${prefix}-from-email`).value.trim(),
+      _scope: isProject ? 'project' : 'global',
     };
     if (pw && !pw.includes('•')) updates.smtp_password = pw;
-    await api('PUT', '/api/settings', updates);
-    const r = await api('POST', '/api/settings/test-smtp', {});
+    const saveUrl = isProject
+      ? `/api/settings?project_id=${state.activeProjectId}`
+      : '/api/settings';
+    await api('PUT', saveUrl, updates);
+    const r = await api('POST', `/api/settings/test-smtp?scope=${scope}`, {});
     if (r.ok) {
       result.textContent = '✓ Connected successfully';
       result.style.color = 'var(--green)';
@@ -1134,6 +1619,135 @@ async function testSmtp() {
   } finally {
     btn.disabled = false;
   }
+}
+
+/* ── Scripts ──────────────────────────────────────────────────────────── */
+let _scripts = [];
+let _editingScriptId = null;
+
+async function loadScriptsList() {
+  try {
+    _scripts = await GET('/api/scripts');
+    renderScriptsList();
+    renderEmailScriptCards();
+    // Keep hidden select in sync for compatibility
+    const picker = document.getElementById('script-picker');
+    if (picker) {
+      picker.innerHTML = '<option value="">— Select script —</option>' +
+        _scripts.map(s => `<option value="${s.id}">${esc(s.name)}</option>`).join('');
+    }
+  } catch(e) {}
+}
+
+function renderEmailScriptCards() {
+  const el = document.getElementById('email-script-cards');
+  if (!el) return;
+  if (!_scripts || !_scripts.length) {
+    el.innerHTML = '<div class="script-card-empty">No scripts yet — save one in Settings → Scripts</div>';
+    return;
+  }
+  el.innerHTML = _scripts.map(s => `
+    <div class="script-card" data-script-id="${s.id}" onclick="loadScriptCard(${s.id})" title="${esc(s.subject || '')}">
+      <div class="script-card-name">${esc(s.name)}</div>
+      <div class="script-card-subject">${esc(s.subject || '(no subject)')}</div>
+    </div>
+  `).join('');
+}
+
+function loadScriptCard(scriptId) {
+  const s = _scripts.find(x => x.id === scriptId);
+  if (!s) return;
+  document.getElementById('email-subject').value = s.subject || '';
+  document.getElementById('email-body').value    = s.body    || '';
+  // Mark active
+  document.querySelectorAll('.script-card').forEach(c => {
+    c.classList.toggle('active', parseInt(c.dataset.scriptId) === scriptId);
+  });
+}
+
+function renderScriptsList() {
+  const el = document.getElementById('scripts-list');
+  if (!_scripts.length) {
+    el.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-muted);font-size:13px">No scripts yet. Click New Script to create one.</div>';
+    return;
+  }
+  el.innerHTML = _scripts.map(s => `
+    <div class="script-item">
+      <div class="script-item-info">
+        <div class="script-item-name">${esc(s.name)}</div>
+        <div class="script-item-subject">${esc(s.subject || '(no subject)')}</div>
+      </div>
+      <div class="script-item-actions">
+        <button class="btn" onclick="openScriptEditor(${s.id})">Edit</button>
+        <button class="btn" onclick="deleteScript(${s.id})" title="Delete">✕</button>
+      </div>
+    </div>`).join('');
+}
+
+function openScriptEditor(scriptId) {
+  _editingScriptId = scriptId || null;
+  const editor = document.getElementById('script-editor');
+  const title  = document.getElementById('script-editor-title');
+  if (scriptId) {
+    const s = _scripts.find(x => x.id === scriptId);
+    if (!s) return;
+    document.getElementById('se-name').value    = s.name;
+    document.getElementById('se-subject').value = s.subject;
+    document.getElementById('se-body').value    = s.body;
+    title.textContent = 'Edit Script';
+  } else {
+    document.getElementById('se-name').value    = '';
+    document.getElementById('se-subject').value = '';
+    document.getElementById('se-body').value    = '';
+    title.textContent = 'New Script';
+  }
+  editor.style.display = '';
+  document.getElementById('se-name').focus();
+}
+
+function closeScriptEditor() {
+  document.getElementById('script-editor').style.display = 'none';
+  _editingScriptId = null;
+}
+
+async function saveScript() {
+  const name    = document.getElementById('se-name').value.trim();
+  const subject = document.getElementById('se-subject').value.trim();
+  const body    = document.getElementById('se-body').value;
+  if (!name) { document.getElementById('se-name').focus(); return; }
+  try {
+    if (_editingScriptId) {
+      await api('PUT', `/api/scripts/${_editingScriptId}`, { name, subject, body });
+    } else {
+      await api('POST', '/api/scripts', { name, subject, body });
+    }
+    closeScriptEditor();
+    await loadScriptsList();
+    toast('Script saved', 'success');
+  } catch(e) {
+    toast('Failed to save script: ' + e.message, 'error');
+  }
+}
+
+async function deleteScript(scriptId) {
+  if (!confirm('Delete this script?')) return;
+  try {
+    await DEL(`/api/scripts/${scriptId}`);
+    await loadScriptsList();
+    toast('Script deleted', 'success');
+  } catch(e) {
+    toast('Failed to delete script', 'error');
+  }
+}
+
+function loadScript(scriptId) {
+  if (!scriptId) return;
+  const s = _scripts.find(x => x.id === parseInt(scriptId));
+  if (!s) return;
+  if (s.subject) document.getElementById('email-subject').value = s.subject;
+  if (s.body)    document.getElementById('email-body').value    = s.body;
+  document.getElementById('script-picker').value = '';
+  toast(`Loaded "${s.name}"`, 'success');
 }
 
 /* ══════════════════════════════════════════════════════════════════════
@@ -1205,6 +1819,31 @@ function renderCallCard() {
   document.querySelectorAll('.outcome-btn').forEach(b => b.disabled = false);
   document.getElementById('btn-call-skip').disabled = false;
   document.getElementById('call-notes').value = '';
+
+  // Contact chips (email + website)
+  const contactRow = document.getElementById('call-contact-row');
+  const emailBtn   = document.getElementById('call-email-btn');
+  const webBtn     = document.getElementById('call-website-btn');
+  if (contactRow && lead) {
+    const email = (lead.emails || [])[0];
+    const web   = lead.website;
+    contactRow.style.display = (email || web) ? '' : 'none';
+    if (emailBtn) { emailBtn.textContent = email ? `✉ ${email}` : ''; emailBtn.style.display = email ? '' : 'none'; }
+    if (webBtn)   { webBtn.textContent = web ? `↗ ${web.replace(/^https?:\/\/(www\.)?/, '').split('/')[0]}` : ''; webBtn.style.display = web ? '' : 'none'; }
+  }
+
+  // History row
+  const histRow = document.getElementById('call-history-row');
+  if (histRow && lead) {
+    const parts = [];
+    if (lead.last_called_at)  parts.push(`Last called: ${formatDate(lead.last_called_at)}`);
+    if (lead.last_emailed_at) parts.push(`Last emailed: ${formatDate(lead.last_emailed_at)}`);
+    histRow.textContent = parts.join(' · ');
+  }
+
+  // Hide sequence suggestion
+  const seqSuggest = document.getElementById('call-seq-suggest');
+  if (seqSuggest) seqSuggest.style.display = 'none';
 }
 
 async function logCall(outcome) {
@@ -1224,8 +1863,26 @@ async function logCall(outcome) {
       update_status: ['answered', 'interested'].includes(outcomeDb) ? 'qualified' : '',
     });
     callingState.done++;
+
+    // Check for matching auto-trigger sequence
+    const trigger  = `call:${outcomeDb}`;
+    const matchSeq = _sequences.find(s => s.trigger === trigger && s.active);
+    callingState._lastOutcome  = outcomeDb;
+    callingState._lastLeadId   = lead.id;
+    callingState._suggestSeqId = matchSeq ? matchSeq.id : null;
+
     callingState.cursor++;
     renderCallCard();
+
+    // Show sequence suggestion on the new card position (before advancing)
+    if (matchSeq) {
+      const sugg = document.getElementById('call-seq-suggest');
+      const text = document.getElementById('call-seq-suggest-text');
+      if (sugg && text) {
+        text.textContent = `Enroll in "${matchSeq.name}"?`;
+        sugg.style.display = '';
+      }
+    }
   } catch(e) {
     toast('Failed to log call: ' + e.message, 'error');
   }
@@ -1451,3 +2108,545 @@ function runUpdate() {
     btn.onclick = runUpdate;
   };
 }
+
+/* ══════════════════════════════════════════════════════════════════════
+   ADD LEAD MODAL
+   ══════════════════════════════════════════════════════════════════════ */
+
+function openAddLeadModal() {
+  ['al-name','al-website','al-email','al-phone','al-niche','al-city','al-country','al-notes'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  document.getElementById('al-status').value = 'new';
+  document.getElementById('add-lead-modal').classList.add('open');
+  setTimeout(() => document.getElementById('al-name').focus(), 50);
+}
+
+function closeAddLeadModal() {
+  document.getElementById('add-lead-modal').classList.remove('open');
+}
+
+async function saveNewLead() {
+  const name    = document.getElementById('al-name').value.trim();
+  const website = document.getElementById('al-website').value.trim();
+  if (!name && !website) {
+    toast('Company name or website required', 'error');
+    document.getElementById('al-name').focus();
+    return;
+  }
+  try {
+    await api('POST', '/api/leads', {
+      company_name: name,
+      website:      website,
+      email:        document.getElementById('al-email').value.trim(),
+      phone:        document.getElementById('al-phone').value.trim(),
+      niche:        document.getElementById('al-niche').value.trim(),
+      city:         document.getElementById('al-city').value.trim(),
+      country:      document.getElementById('al-country').value.trim(),
+      status:       document.getElementById('al-status').value,
+      notes:        document.getElementById('al-notes').value.trim(),
+    });
+    toast(`Lead added: ${name || website}`, 'success');
+    closeAddLeadModal();
+    loadLeads();
+  } catch(e) {
+    toast('Failed to add lead: ' + e.message, 'error');
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   RESET
+   ══════════════════════════════════════════════════════════════════════ */
+
+async function resetAllLeads() {
+  const confirmed = confirm(
+    'Delete ALL leads, email logs, and activity for the current project?\n\nThis cannot be undone.'
+  );
+  if (!confirmed) return;
+  try {
+    const r = await api('DELETE', '/api/leads/all');
+    toast(`Cleared ${r.deleted} leads`, 'success');
+    closeSettingsModal();
+    loadLeads();
+  } catch(e) {
+    toast('Failed to reset: ' + e.message, 'error');
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   SEQUENCES
+   ══════════════════════════════════════════════════════════════════════ */
+
+let _sequences  = [];
+let _seqTriggers = [];
+let _editingSeqId = null;
+let _seqSteps     = [];
+
+async function loadSequences() {
+  try {
+    [_sequences, _seqTriggers] = await Promise.all([
+      GET('/api/sequences'),
+      GET('/api/sequences/triggers'),
+    ]);
+    renderSequencesList();
+    _populateTriggerDropdown();
+  } catch(e) {}
+}
+
+function renderSequencesList() {
+  const el = document.getElementById('sequences-list');
+  if (!el) return;
+  if (!_sequences.length) {
+    el.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-muted);font-size:13px">No sequences yet. Click New Sequence to create one.</div>';
+    return;
+  }
+  el.innerHTML = _sequences.map(s => {
+    const trigLabel = (_seqTriggers.find(t => t.value === s.trigger) || {}).label || s.trigger;
+    const steps = s.steps || [];
+    return `<div class="script-item">
+      <div class="script-item-info">
+        <div class="script-item-name" style="display:flex;align-items:center;gap:8px">
+          ${esc(s.name)}
+          ${s.active ? '' : '<span style="font-size:10px;background:rgba(239,68,68,.15);color:#f87171;padding:2px 6px;border-radius:99px">paused</span>'}
+        </div>
+        <div class="script-item-subject">${esc(trigLabel)} · ${steps.length} step${steps.length !== 1 ? 's' : ''}</div>
+      </div>
+      <div class="script-item-actions">
+        <button class="btn" onclick="openSeqEditor(${s.id})">Edit</button>
+        <button class="btn" onclick="deleteSeq(${s.id})" title="Delete">✕</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function _populateTriggerDropdown() {
+  const sel = document.getElementById('seq-trigger');
+  if (!sel) return;
+  sel.innerHTML = _seqTriggers.map(t =>
+    `<option value="${esc(t.value)}">${esc(t.label)}</option>`
+  ).join('');
+}
+
+function openSeqEditor(seqId) {
+  _editingSeqId = seqId || null;
+  const editor = document.getElementById('seq-editor');
+  const title  = document.getElementById('seq-editor-title');
+  _populateTriggerDropdown();
+  if (seqId) {
+    const s = _sequences.find(x => x.id === seqId);
+    if (!s) return;
+    document.getElementById('seq-name').value = s.name;
+    document.getElementById('seq-trigger').value = s.trigger;
+    _seqSteps = (s.steps || []).map(st => ({...st}));
+    title.textContent = 'Edit Sequence';
+  } else {
+    document.getElementById('seq-name').value = '';
+    document.getElementById('seq-trigger').value = 'manual';
+    _seqSteps = [];
+    title.textContent = 'New Sequence';
+  }
+  renderSeqSteps();
+  editor.style.display = '';
+  document.getElementById('seq-name').focus();
+}
+
+function closeSeqEditor() {
+  document.getElementById('seq-editor').style.display = 'none';
+  _editingSeqId = null;
+  _seqSteps = [];
+}
+
+function addSeqStep() {
+  _seqSteps.push({ delay_days: 3, subject: '', body: '' });
+  renderSeqSteps();
+}
+
+function removeSeqStep(idx) {
+  _seqSteps.splice(idx, 1);
+  renderSeqSteps();
+}
+
+function renderSeqSteps() {
+  const el = document.getElementById('seq-steps');
+  if (!el) return;
+  if (!_seqSteps.length) {
+    el.innerHTML = '<div style="font-size:12px;color:var(--text-muted);padding:8px 0">No steps yet. Click "Add Step" to add an email step.</div>';
+    return;
+  }
+  el.innerHTML = _seqSteps.map((step, i) => `
+    <div class="seq-step" data-idx="${i}">
+      <div class="seq-step-header">
+        <span style="font-size:12px;font-weight:600;color:var(--text-dim)">Step ${i+1}</span>
+        <div style="display:flex;align-items:center;gap:8px">
+          <label style="font-size:12px;color:var(--text-muted);white-space:nowrap">Wait</label>
+          <input type="number" class="seq-delay" min="0" step="0.5" value="${step.delay_days}"
+            style="width:60px;padding:4px 6px;font-size:12px"
+            oninput="_seqSteps[${i}].delay_days=parseFloat(this.value)||0">
+          <label style="font-size:12px;color:var(--text-muted)">days, then send:</label>
+          <button class="btn" style="font-size:11px;padding:3px 8px" onclick="removeSeqStep(${i})">✕</button>
+        </div>
+      </div>
+      <div class="field full" style="margin-top:8px">
+        <input type="text" class="seq-subject" placeholder="Subject line…" value="${esc(step.subject)}"
+          oninput="_seqSteps[${i}].subject=this.value">
+      </div>
+      <div class="field full" style="margin-top:6px">
+        <textarea class="seq-body email-textarea" style="min-height:80px" placeholder="Email body… (merge tags: {{company_name}}, {{first_name}}, etc.)"
+          oninput="_seqSteps[${i}].body=this.value">${esc(step.body)}</textarea>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function saveSeq() {
+  const name    = document.getElementById('seq-name').value.trim();
+  const trigger = document.getElementById('seq-trigger').value;
+  if (!name) { document.getElementById('seq-name').focus(); return; }
+  try {
+    const payload = { name, trigger, steps: _seqSteps, active: true };
+    if (_editingSeqId) {
+      await api('PUT', `/api/sequences/${_editingSeqId}`, payload);
+    } else {
+      await api('POST', '/api/sequences', payload);
+    }
+    closeSeqEditor();
+    await loadSequences();
+    toast('Sequence saved', 'success');
+  } catch(e) {
+    toast('Failed to save: ' + e.message, 'error');
+  }
+}
+
+async function deleteSeq(seqId) {
+  if (!confirm('Delete this sequence? Enrolled leads will be unenrolled.')) return;
+  try {
+    await DEL(`/api/sequences/${seqId}`);
+    await loadSequences();
+    toast('Sequence deleted', 'success');
+  } catch(e) {
+    toast('Failed to delete', 'error');
+  }
+}
+
+/* ── Process due sequences ─────────────────────────────────────────── */
+async function processSequences() {
+  const btn    = document.getElementById('btn-process-sequences');
+  const result = document.getElementById('seq-process-result');
+  btn.disabled = true;
+  result.textContent = 'Processing…';
+  try {
+    const { job_id } = await api('POST', '/api/sequences/process', {});
+    const es = new EventSource(`/api/email/jobs/${job_id}/stream`);
+    es.onmessage = e => {
+      const msg = JSON.parse(e.data);
+      if (msg.type === 'done') {
+        es.close();
+        btn.disabled = false;
+        const c = msg.counts || {};
+        result.textContent = `Done — ${c.sent||0} sent, ${c.failed||0} failed, ${c.skipped||0} skipped`;
+        result.style.color = 'var(--green)';
+        loadLeads();
+      }
+    };
+    es.onerror = () => {
+      es.close();
+      btn.disabled = false;
+      result.textContent = 'Error processing sequences';
+      result.style.color = 'var(--red)';
+    };
+  } catch(e) {
+    btn.disabled = false;
+    result.textContent = 'Error: ' + e.message;
+    result.style.color = 'var(--red)';
+  }
+}
+
+/* ── Enroll lead in sequence (from detail modal) ───────────────────── */
+function openEnrollModal() {
+  if (!state.currentDetailId) return;
+  const lead = state.leads.find(l => l.id === state.currentDetailId);
+  if (!lead) return;
+  document.getElementById('enroll-lead-name').textContent =
+    lead.company_name || domainName(lead.website);
+
+  const picker = document.getElementById('enroll-seq-picker');
+  picker.innerHTML = _sequences.length
+    ? _sequences.map(s => `<option value="${s.id}">${esc(s.name)}</option>`).join('')
+    : '<option value="">No sequences yet — create one in Settings</option>';
+
+  document.getElementById('enroll-seq-preview').textContent = '';
+  picker.onchange = () => _showSeqPreview(parseInt(picker.value));
+  _showSeqPreview(parseInt(picker.value));
+
+  document.getElementById('enroll-modal').classList.add('open');
+}
+
+function closeEnrollModal() {
+  document.getElementById('enroll-modal').classList.remove('open');
+}
+
+function _showSeqPreview(seqId) {
+  const seq = _sequences.find(s => s.id === seqId);
+  const el  = document.getElementById('enroll-seq-preview');
+  if (!seq || !el) return;
+  const steps = seq.steps || [];
+  el.innerHTML = steps.map((s, i) =>
+    `Step ${i+1}: wait ${s.delay_days}d → "${esc(s.subject || '(no subject)')}"`
+  ).join('<br>');
+}
+
+async function confirmEnroll() {
+  if (!state.currentDetailId) return;
+  const seqId = parseInt(document.getElementById('enroll-seq-picker').value);
+  if (!seqId) { toast('No sequence selected', 'error'); return; }
+  try {
+    await api('POST', `/api/leads/${state.currentDetailId}/enroll`, { sequence_id: seqId });
+    const seqName = (_sequences.find(s => s.id === seqId) || {}).name || 'sequence';
+    toast(`Enrolled in "${seqName}"`, 'success');
+    closeEnrollModal();
+  } catch(e) {
+    if (e.message.includes('409') || e.message.includes('already enrolled')) {
+      toast('Already enrolled in this sequence', 'error');
+    } else {
+      toast('Failed to enroll: ' + e.message, 'error');
+    }
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   CALLING — sequence enrollment tracking state
+   ══════════════════════════════════════════════════════════════════════ */
+
+callingState._lastLeadId   = null;
+callingState._suggestSeqId = null;
+
+async function enrollFromCall() {
+  const { _lastLeadId, _suggestSeqId } = callingState;
+  if (!_lastLeadId || !_suggestSeqId) return;
+  try {
+    await api('POST', `/api/leads/${_lastLeadId}/enroll`, { sequence_id: _suggestSeqId });
+    const seqName = (_sequences.find(s => s.id === _suggestSeqId) || {}).name || 'sequence';
+    toast(`Enrolled in "${seqName}"`, 'success');
+  } catch(e) {
+    toast('Already enrolled or error', 'error');
+  }
+  document.getElementById('call-seq-suggest').style.display = 'none';
+}
+
+function callQuickEmail() {
+  const { queue, cursor } = callingState;
+  if (cursor >= queue.length) return;
+  const lead = queue[cursor];
+  if (!lead.emails?.length) { toast('No email for this lead', 'error'); return; }
+  // Close call modal, select lead, open email
+  state.selectedIds.clear();
+  state.selectedIds.add(lead.id);
+  closeCallingModal();
+  openEmailModal();
+}
+
+function callOpenWebsite() {
+  const { queue, cursor } = callingState;
+  if (cursor >= queue.length) return;
+  const lead = queue[cursor];
+  if (lead.website) window.open(lead.website, '_blank');
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   TAG FILTER
+   ══════════════════════════════════════════════════════════════════════ */
+
+function filterByTag(e, tag) {
+  e.stopPropagation();
+  const input = document.getElementById('tag-filter');
+  if (input) {
+    input.value = tag;
+    state.tagFilter = tag;
+    _updateFilterDot();
+    loadLeads();
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   DASHBOARD
+   ══════════════════════════════════════════════════════════════════════ */
+
+let _dashboardVisible = false;
+
+function toggleDashboard() {
+  _dashboardVisible = !_dashboardVisible;
+  const panel = document.getElementById('dashboard-panel');
+  const btn   = document.getElementById('btn-dashboard');
+  panel.style.display = _dashboardVisible ? '' : 'none';
+  btn.classList.toggle('active', _dashboardVisible);
+  if (_dashboardVisible) loadDashboard();
+}
+
+async function loadDashboard() {
+  try {
+    const d = await GET('/api/dashboard');
+    renderDashboard(d);
+  } catch(e) {}
+}
+
+function renderDashboard(d) {
+  // Funnel
+  const funnel = d.funnel || {};
+  const funnelOrder = ['new', 'contacted', 'warm', 'qualified', 'rejected'];
+  const funnelColors = {
+    new: 'var(--primary)', contacted: 'var(--blue)', warm: '#fb923c',
+    qualified: 'var(--green)', rejected: 'var(--red)'
+  };
+  const maxVal = Math.max(1, ...funnelOrder.map(k => funnel[k] || 0));
+  document.getElementById('dash-funnel').innerHTML = funnelOrder.map(k => {
+    const val = funnel[k] || 0;
+    const pct = Math.round((val / maxVal) * 100);
+    return `<div class="funnel-row">
+      <span class="funnel-label">${k}</span>
+      <div class="funnel-bar-wrap"><div class="funnel-bar" style="width:${pct}%;background:${funnelColors[k]}"></div></div>
+      <span class="funnel-count">${val}</span>
+    </div>`;
+  }).join('');
+
+  // Email stats
+  const em = d.emails || {};
+  const openRate = em.sent > 0 ? Math.round((em.opened / em.sent) * 100) : 0;
+  document.getElementById('dash-email-stats').innerHTML = `
+    <div class="dash-stat-row"><span>Emails sent</span><span class="dash-stat-val">${em.sent || 0}</span></div>
+    <div class="dash-stat-row"><span>Opens tracked</span><span class="dash-stat-val">${em.opened || 0}</span></div>
+    <div class="dash-stat-row"><span>Open rate</span><span class="dash-stat-val" style="color:var(--green)">${openRate}%</span></div>
+    <div class="dash-stat-row"><span>Failed</span><span class="dash-stat-val" style="color:var(--red)">${em.failed || 0}</span></div>
+  `;
+
+  // Callbacks
+  const due = d.callbacks_due || 0;
+  document.getElementById('dash-callbacks').innerHTML = due > 0
+    ? `<div style="font-size:32px;font-weight:700;color:var(--red);margin-bottom:6px">${due}</div>
+       <div style="font-size:12.5px;color:var(--text-muted)">leads need a callback now</div>
+       <button class="btn" style="margin-top:10px" onclick="document.getElementById('toggle-overdue').click()">Show overdue</button>`
+    : `<div class="dash-empty">No callbacks due</div>`;
+}
+
+/* ── IMAP ────────────────────────────────────────────────────────── */
+async function imapStart() {
+  const cfg = {
+    imap_host:     document.getElementById('s-imap-host')?.value.trim()      || '',
+    imap_port:     parseInt(document.getElementById('s-imap-port')?.value)    || 993,
+    imap_ssl:      document.getElementById('s-imap-ssl')?.checked             !== false,
+    imap_user:     document.getElementById('s-imap-user')?.value.trim()       || '',
+    imap_password: document.getElementById('s-imap-password')?.value          || '',
+    imap_folder:   document.getElementById('s-imap-folder')?.value.trim()     || 'INBOX',
+    imap_interval: parseInt(document.getElementById('s-imap-interval')?.value)|| 10,
+  };
+  if (!cfg.imap_host || !cfg.imap_user) {
+    toast('Enter IMAP host and username first', 'error');
+    return;
+  }
+  try {
+    await api('POST', '/api/imap/start', cfg);
+    toast('IMAP polling started', 'success');
+    const lbl = document.getElementById('imap-status-label');
+    if (lbl) lbl.textContent = 'Running…';
+  } catch(e) {
+    toast('Failed to start IMAP: ' + e.message, 'error');
+  }
+}
+
+async function imapStop() {
+  try {
+    await api('POST', '/api/imap/stop', {});
+    toast('IMAP polling stopped', 'success');
+    const lbl = document.getElementById('imap-status-label');
+    if (lbl) lbl.textContent = 'Not running';
+  } catch(e) {
+    toast('Failed to stop IMAP: ' + e.message, 'error');
+  }
+}
+
+/* ── Webhooks ────────────────────────────────────────────────────── */
+let _whEditId = null;
+
+async function loadWebhooks() {
+  try {
+    const hooks = await GET('/api/webhooks');
+    renderWebhooksList(hooks);
+  } catch {}
+}
+
+function renderWebhooksList(hooks) {
+  const el = document.getElementById('webhooks-list');
+  if (!el) return;
+  if (!hooks || hooks.length === 0) {
+    el.innerHTML = '<div class="dash-empty" style="padding:20px 0">No webhooks configured</div>';
+    return;
+  }
+  el.innerHTML = hooks.map(h => `
+    <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;font-weight:500;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(h.url)}">${esc(h.url)}</div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:2px">${esc(h.event)}</div>
+      </div>
+      <button class="btn" style="padding:4px 10px;font-size:11px" onclick="openWebhookEditor(${h.id})">Edit</button>
+      <button class="btn danger" style="padding:4px 10px;font-size:11px" onclick="deleteWebhook(${h.id})">✕</button>
+    </div>
+  `).join('');
+}
+
+function openWebhookEditor(id) {
+  _whEditId = id || null;
+  const editor = document.getElementById('webhook-editor');
+  if (!editor) return;
+  editor.style.display = '';
+  if (id) {
+    // Populate from existing hook in list — re-fetch for simplicity
+    GET('/api/webhooks').then(hooks => {
+      const h = hooks.find(x => x.id === id);
+      if (h) {
+        document.getElementById('wh-url').value   = h.url   || '';
+        document.getElementById('wh-event').value = h.event || 'status_changed';
+      }
+    }).catch(() => {});
+  } else {
+    document.getElementById('wh-url').value   = '';
+    document.getElementById('wh-event').value = 'status_changed';
+  }
+  document.getElementById('wh-url').focus();
+}
+
+function closeWebhookEditor() {
+  _whEditId = null;
+  const editor = document.getElementById('webhook-editor');
+  if (editor) editor.style.display = 'none';
+}
+
+async function saveWebhook() {
+  const url   = document.getElementById('wh-url')?.value.trim();
+  const event = document.getElementById('wh-event')?.value || 'status_changed';
+  if (!url) { toast('Enter a URL', 'error'); return; }
+  try {
+    if (_whEditId) {
+      await api('PUT', `/api/webhooks/${_whEditId}`, { url, event });
+    } else {
+      await api('POST', '/api/webhooks', { url, event });
+    }
+    closeWebhookEditor();
+    await loadWebhooks();
+    toast('Webhook saved', 'success');
+  } catch(e) {
+    toast('Failed to save webhook: ' + e.message, 'error');
+  }
+}
+
+async function deleteWebhook(id) {
+  try {
+    await DEL(`/api/webhooks/${id}`);
+    await loadWebhooks();
+    toast('Webhook deleted', 'success');
+  } catch(e) {
+    toast('Failed to delete webhook', 'error');
+  }
+}
+
+/* ── Load sequences silently on startup (needed for calling modal) ─── */
+window.addEventListener('load', () => { loadSequences(); });

@@ -27,17 +27,37 @@ DEFAULTS: dict = {
     "daily_limit":   500,
     "auto_contacted": True,
     "unsubscribe_footer": True,
+    # AI
+    "anthropic_api_key": "",
+    # Google Maps
+    "google_maps_api_key": "",
+    # IMAP (reply detection)
+    "imap_host":     "",
+    "imap_port":     993,
+    "imap_ssl":      True,
+    "imap_user":     "",
+    "imap_password": "",
+    "imap_interval": 10,
+    "imap_folder":   "INBOX",
+    # App
+    "base_url":      "http://localhost:7337",
 }
 
 ENV_MAP: dict[str, str] = {
-    "smtp_host":     "SMTP_HOST",
-    "smtp_port":     "SMTP_PORT",
-    "smtp_ssl":      "SMTP_SSL",
-    "smtp_starttls": "SMTP_STARTTLS",
-    "smtp_user":     "SMTP_USER",
-    "smtp_password": "SMTP_PASSWORD",
-    "from_name":     "FROM_NAME",
-    "from_email":    "FROM_EMAIL",
+    "smtp_host":          "SMTP_HOST",
+    "smtp_port":          "SMTP_PORT",
+    "smtp_ssl":           "SMTP_SSL",
+    "smtp_starttls":      "SMTP_STARTTLS",
+    "smtp_user":          "SMTP_USER",
+    "smtp_password":      "SMTP_PASSWORD",
+    "from_name":          "FROM_NAME",
+    "from_email":         "FROM_EMAIL",
+    "anthropic_api_key":  "ANTHROPIC_API_KEY",
+    "google_maps_api_key": "GOOGLE_MAPS_API_KEY",
+    "imap_host":           "IMAP_HOST",
+    "imap_user":           "IMAP_USER",
+    "imap_password":       "IMAP_PASSWORD",
+    "base_url":            "BASE_URL",
 }
 
 
@@ -146,8 +166,18 @@ def get_for_ui(project_id: str | None = None) -> dict:
     s = load(project_id)
     if s.get("smtp_password"):
         s["smtp_password"] = "••••••••"
+    if s.get("anthropic_api_key"):
+        key = s["anthropic_api_key"]
+        s["anthropic_api_key"] = key[:8] + "••••••••" if len(key) > 8 else "••••••••"
+    if s.get("google_maps_api_key"):
+        k = s["google_maps_api_key"]
+        s["google_maps_api_key"] = k[:8] + "••••••••" if len(k) > 8 else "••••••••"
+    if s.get("imap_password"):
+        s["imap_password"] = "••••••••"
+    s["_has_maps"] = bool(load(project_id).get("google_maps_api_key"))
     s["_env_locked"] = list(env_locked())
     s["_project_id"] = project_id or "default"
+    s["_has_anthropic"] = bool(load(project_id).get("anthropic_api_key"))
     return s
 
 

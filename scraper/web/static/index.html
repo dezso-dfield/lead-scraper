@@ -39,38 +39,50 @@
       </div>
     </div>
 
-    <div id="stats"></div>
     <div class="header-actions">
-      <div class="btn-group">
-        <button class="btn" id="btn-export-csv" title="Export CSV">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-          CSV
-        </button>
-        <button class="btn" id="btn-export-xlsx" title="Export Excel">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-          Excel
-        </button>
-        <button class="btn" id="btn-export-json" title="Export JSON">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-          JSON
-        </button>
-      </div>
-      <button class="btn" id="btn-import" title="Import leads from CSV/Excel/JSON">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-        Import
+      <button class="btn" id="btn-add-lead" onclick="openAddLeadModal()" title="Add lead manually">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Add Lead
       </button>
       <button class="btn primary" id="btn-new-scrape">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-        New Scrape
+        Find Leads
       </button>
-      <button class="btn" id="btn-history" title="Activity History" onclick="openHistoryModal()">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-        History
-      </button>
-      <button class="btn icon-btn update-btn" id="btn-update" title="Check for updates" onclick="openUpdateModal()">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.6"/></svg>
-        <span class="update-dot" id="update-dot" style="display:none"></span>
-      </button>
+      <!-- More menu -->
+      <div class="more-menu-wrap" id="more-menu-wrap">
+        <button class="btn icon-btn" id="btn-more" onclick="toggleMoreMenu(event)" title="More options">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="5" r="1" fill="currentColor"/><circle cx="12" cy="12" r="1" fill="currentColor"/><circle cx="12" cy="19" r="1" fill="currentColor"/></svg>
+        </button>
+        <div class="more-menu" id="more-menu">
+          <div class="more-menu-section">Export</div>
+          <button class="more-menu-item" id="btn-export-csv">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Export CSV
+          </button>
+          <button class="more-menu-item" id="btn-export-xlsx">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Export Excel
+          </button>
+          <button class="more-menu-item" id="btn-export-json">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Export JSON
+          </button>
+          <div class="more-menu-sep"></div>
+          <button class="more-menu-item" id="btn-import">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            Import Leads
+          </button>
+          <button class="more-menu-item" id="btn-history" onclick="openHistoryModal(); closeMoreMenu()">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            Activity History
+          </button>
+          <button class="more-menu-item update-btn" id="btn-update" onclick="openUpdateModal(); closeMoreMenu()">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.6"/></svg>
+            Check for Updates
+            <span class="update-dot" id="update-dot" style="display:none"></span>
+          </button>
+        </div>
+      </div>
       <button class="btn icon-btn" id="btn-settings" title="Settings">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
       </button>
@@ -79,29 +91,111 @@
 
   <!-- ── Toolbar ────────────────────────────────────────────────────── -->
   <div id="toolbar">
-    <div class="filter-group">
+    <div class="toolbar-main">
       <div class="search-wrap">
         <svg class="icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-        <input type="text" id="search" placeholder="Search companies, emails…" autocomplete="off">
+        <input type="text" id="search" placeholder="Search leads…" autocomplete="off">
         <button class="clear-search" id="clear-search" title="Clear">✕</button>
       </div>
-      <select id="status-filter">
-        <option value="">All statuses</option>
-        <option value="new">New</option>
-        <option value="contacted">Contacted</option>
-        <option value="qualified">Qualified</option>
-        <option value="rejected">Rejected</option>
-      </select>
-      <button class="toggle-btn" id="toggle-email" data-active="false">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
-        Has Email
+      <button class="toolbar-btn" id="btn-filter-toggle" onclick="toggleFilters()" title="Filters">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="6" x2="20" y2="6"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="11" y1="18" x2="13" y2="18"/></svg>
+        Filters
+        <span class="filter-active-dot" id="filter-active-dot" style="display:none"></span>
       </button>
-      <button class="toggle-btn" id="toggle-phone" data-active="false">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 13a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.6 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
-        Has Phone
+      <button class="toolbar-btn" id="btn-dashboard" onclick="toggleDashboard()" title="Dashboard">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+        Dashboard
       </button>
+      <div id="stats"></div>
+      <span id="result-count" class="result-count"></span>
     </div>
-    <span id="result-count"></span>
+
+    <!-- ── Filter panel ── -->
+    <div class="filter-panel" id="filter-panel">
+      <div class="filter-panel-grid">
+        <div class="fp-item">
+          <label class="fp-label">Status</label>
+          <select id="status-filter" class="fp-select">
+            <option value="">All</option>
+            <option value="new">New</option>
+            <option value="contacted">Contacted</option>
+            <option value="warm">Warm</option>
+            <option value="qualified">Qualified</option>
+            <option value="rejected">Rejected</option>
+          </select>
+        </div>
+        <div class="fp-item">
+          <label class="fp-label">Contact info</label>
+          <div class="fp-toggles">
+            <button class="fp-toggle" id="toggle-email" data-active="false">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+              Has Email
+            </button>
+            <button class="fp-toggle" id="toggle-phone" data-active="false">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 13a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.6 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+              Has Phone
+            </button>
+          </div>
+        </div>
+        <div class="fp-item">
+          <label class="fp-label">Last emailed</label>
+          <select id="filter-emailed" class="fp-select">
+            <option value="">Any time</option>
+            <option value="never">Never</option>
+            <option value="1">Today</option>
+            <option value="3">Last 3 days</option>
+            <option value="7">Last week</option>
+            <option value="30">Last month</option>
+          </select>
+        </div>
+        <div class="fp-item">
+          <label class="fp-label">Last called</label>
+          <select id="filter-called" class="fp-select">
+            <option value="">Any time</option>
+            <option value="never">Never</option>
+            <option value="1">Today</option>
+            <option value="3">Last 3 days</option>
+            <option value="7">Last week</option>
+            <option value="30">Last month</option>
+          </select>
+        </div>
+        <div class="fp-item">
+          <label class="fp-label">Tag</label>
+          <div class="search-wrap" style="min-width:0">
+            <svg class="icon" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+            <input type="text" id="tag-filter" placeholder="e.g. hot-lead" autocomplete="off">
+          </div>
+        </div>
+        <div class="fp-item fp-item-toggle">
+          <label class="fp-label">Callbacks</label>
+          <button class="fp-toggle" id="toggle-overdue" data-active="false">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            Overdue only
+          </button>
+        </div>
+        <div class="fp-item fp-reset">
+          <button class="fp-reset-btn" onclick="resetFilters()">Clear all filters</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Dashboard panel ──────────────────────────────────────────── -->
+  <div id="dashboard-panel" style="display:none">
+    <div class="dashboard-grid">
+      <div class="dash-card">
+        <div class="dash-card-title">Pipeline Funnel</div>
+        <div id="dash-funnel"></div>
+      </div>
+      <div class="dash-card">
+        <div class="dash-card-title">Email Stats</div>
+        <div id="dash-email-stats"></div>
+      </div>
+      <div class="dash-card">
+        <div class="dash-card-title">Callbacks Due</div>
+        <div id="dash-callbacks"></div>
+      </div>
+    </div>
   </div>
 
   <!-- ── Table ──────────────────────────────────────────────────────── -->
@@ -110,56 +204,64 @@
     <div id="empty-state">
       <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
       <h3>No leads yet</h3>
-      <p>Click <strong>New Scrape</strong> to start collecting leads from the web.</p>
+      <p>Click <strong>Find Leads</strong> to start collecting leads from the web.</p>
       <button class="btn primary" onclick="openScrapeModal()">Start Scraping</button>
     </div>
     <table id="leads-table">
       <thead>
         <tr>
           <th class="col-check"><input type="checkbox" id="select-all" title="Select all" onclick="toggleSelectAll(this)"></th>
-          <th data-col="id">#</th>
-          <th data-col="company_name">Company <span class="sort-icon">↕</span></th>
-          <th data-col="email">Email</th>
-          <th data-col="phone">Phone</th>
-          <th data-col="website">Website</th>
-          <th data-col="niche">Niche <span class="sort-icon">↕</span></th>
-          <th data-col="confidence">Conf <span class="sort-icon">↕</span></th>
-          <th data-col="status">Status <span class="sort-icon">↕</span></th>
-          <th></th>
+          <th data-col="company_name" class="col-company sortable" onclick="sortBy(this.dataset.col)">Company <span class="sort-icon">↕</span></th>
+          <th data-col="email" class="col-contact">Email</th>
+          <th data-col="phone" class="col-phone">Phone</th>
+          <th data-col="website" class="col-website">Website</th>
+          <th data-col="score" class="col-score sortable" onclick="sortBy(this.dataset.col)">Score <span class="sort-icon">↕</span></th>
+          <th data-col="status" class="col-status sortable" onclick="sortBy(this.dataset.col)">Status <span class="sort-icon">↕</span></th>
+          <th class="col-actions"></th>
         </tr>
       </thead>
       <tbody id="leads-body"></tbody>
     </table>
+    <!-- ── Card view (mobile) ─────────────────────────────────────── -->
+    <div id="card-view"></div>
   </div>
 
   <!-- ── Selection bar ────────────────────────────────────────────── -->
   <div class="selection-bar" id="selection-bar">
-    <span id="selection-count">0 selected</span>
-    <div style="display:flex;gap:8px;align-items:center">
-      <button class="btn" onclick="deselectAll()">Deselect All</button>
+    <div class="sel-left">
+      <button class="sel-clear" onclick="deselectAll()" title="Clear selection">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+      <span id="selection-count">0 selected</span>
+    </div>
+    <div class="sel-actions">
+      <div class="sel-group">
+        <select id="bulk-status-select" class="sel-select">
+          <option value="">Set status…</option>
+          <option value="new">New</option>
+          <option value="contacted">Contacted</option>
+          <option value="warm">Warm</option>
+          <option value="qualified">Qualified</option>
+          <option value="rejected">Rejected</option>
+        </select>
+        <button class="btn sel-apply" onclick="bulkUpdateStatus(document.getElementById('bulk-status-select').value)">Apply</button>
+      </div>
+      <div class="sel-sep"></div>
       <button class="btn" id="btn-call-selected" onclick="openCallingModal()">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 13a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.6 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
-        Start Calling
+        Call
       </button>
       <button class="btn primary" id="btn-email-selected" onclick="openEmailModal()">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
-        Send Email
+        Email
+      </button>
+      <button class="btn danger" id="btn-delete-selected" onclick="bulkDelete()">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+        Delete
       </button>
     </div>
   </div>
 
-  <!-- ── Shortcut bar ───────────────────────────────────────────────── -->
-  <div class="shortcut-bar">
-    <span><kbd>N</kbd> New Scrape</span>
-    <span><kbd>Enter</kbd> Open Detail</span>
-    <span><kbd>O</kbd> Open Website</span>
-    <span><kbd>C</kbd> Copy Email</span>
-    <span><kbd>T</kbd> Cycle Status</span>
-    <span><kbd>Del</kbd> Delete</span>
-    <span><kbd>/</kbd> Search</span>
-    <span><kbd>E</kbd> Export CSV</span>
-    <span><kbd>M</kbd> Email Selected</span>
-  </div>
 
 </div><!-- #app -->
 
@@ -184,6 +286,25 @@
       <div class="field">
         <label>Location</label>
         <input type="text" id="scrape-location" value="Budapest, Hungary" autocomplete="off">
+      </div>
+      <div class="scrape-options">
+        <label class="scrape-option" id="ai-option-wrap" title="Use Claude AI to generate smarter, more targeted search queries">
+          <input type="checkbox" id="scrape-use-ai">
+          <span class="ai-badge">AI</span>
+          <span>AI-powered queries</span>
+          <span id="ai-option-status" style="font-size:11px;color:var(--text-muted);margin-left:auto"></span>
+        </label>
+        <label class="scrape-option" title="Also search Facebook, LinkedIn, and Instagram for business profiles">
+          <input type="checkbox" id="scrape-social">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/></svg>
+          <span>Include social media</span>
+        </label>
+        <label class="scrape-option" id="maps-option-wrap" title="Search Google Maps for local businesses (requires Maps API key in Settings → AI)">
+          <input type="checkbox" id="scrape-maps">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+          <span>Google Maps</span>
+          <span id="maps-option-status" style="font-size:11px;color:var(--text-muted);margin-left:auto"></span>
+        </label>
       </div>
 
       <div class="progress-bar" id="scrape-progress-bar">
@@ -260,6 +381,10 @@
     </div>
     <div class="modal-footer">
       <button class="btn danger" id="btn-detail-delete" onclick="deleteCurrentLead()">Delete</button>
+      <button class="btn" id="btn-detail-enroll" onclick="openEnrollModal()" title="Enroll in follow-up sequence">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.6"/></svg>
+        Sequence
+      </button>
       <button class="btn" id="btn-detail-website" onclick="openCurrentWebsite()">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
         Open Website
@@ -282,6 +407,16 @@
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
           <span id="email-to-label">0 leads selected</span>
         </div>
+        <div class="script-picker-section">
+          <div class="script-picker-label">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            Saved scripts
+          </div>
+          <div class="script-cards" id="email-script-cards">
+            <div class="script-card-empty">No scripts yet — save one in Settings → Scripts</div>
+          </div>
+          <select id="script-picker" style="display:none" onchange="loadScript(this.value)"><option value="">— Select script —</option></select>
+        </div>
         <div class="field" style="margin-top:14px">
           <label>Subject</label>
           <input type="text" id="email-subject" placeholder="e.g. Collaboration opportunity — {{company_name}}" autocomplete="off">
@@ -301,6 +436,10 @@
         <div class="field" style="margin-top:12px;display:flex;align-items:center;gap:8px">
           <input type="checkbox" id="email-auto-contacted" checked style="width:auto">
           <label style="margin:0;text-transform:none;letter-spacing:0;font-size:13px;color:var(--text)">Mark leads as "Contacted" after sending</label>
+        </div>
+        <div class="field" style="margin-top:8px;display:flex;align-items:center;gap:8px">
+          <input type="checkbox" id="email-validate" checked style="width:auto">
+          <label style="margin:0;text-transform:none;letter-spacing:0;font-size:13px;color:var(--text)">Validate email addresses before sending (MX check)</label>
         </div>
       </div>
 
@@ -336,10 +475,18 @@
     </div>
     <div class="modal-body" style="padding:0">
       <div class="settings-tabs">
-        <button class="settings-tab active" data-tab="smtp" onclick="switchTab(this)">SMTP</button>
-        <button class="settings-tab" data-tab="sending" onclick="switchTab(this)">Sending</button>
-        <button class="settings-tab" data-tab="env" onclick="switchTab(this)">Environment</button>
+        <button class="settings-tab active" data-tab="smtp"      onclick="switchTab(this)">Global SMTP</button>
+        <button class="settings-tab"        data-tab="proj-smtp" onclick="switchTab(this)">Project SMTP</button>
+        <button class="settings-tab"        data-tab="sending"   onclick="switchTab(this)">Sending</button>
+        <button class="settings-tab"        data-tab="scripts"   onclick="switchTab(this)">Scripts</button>
+        <button class="settings-tab"        data-tab="sequences" onclick="switchTab(this)">Sequences</button>
+        <button class="settings-tab"        data-tab="ai"        onclick="switchTab(this)">AI</button>
+        <button class="settings-tab"        data-tab="imap"      onclick="switchTab(this)">IMAP</button>
+        <button class="settings-tab"        data-tab="webhooks"  onclick="switchTab(this)">Webhooks</button>
+        <button class="settings-tab"        data-tab="env"       onclick="switchTab(this)">Environment</button>
       </div>
+
+      <!-- ── Global SMTP ── -->
       <div class="settings-tab-body" id="tab-smtp">
         <div class="settings-grid">
           <div class="field full">
@@ -351,15 +498,11 @@
             <input type="number" id="s-smtp-port" value="587" min="1" max="65535">
           </div>
           <div class="field" style="display:flex;align-items:center;gap:10px;padding-top:20px">
-            <label style="display:flex;align-items:center;gap:8px;text-transform:none;letter-spacing:0;font-size:13px;color:var(--text);margin:0">
-              <input type="checkbox" id="s-smtp-ssl" style="width:auto"> SSL
-            </label>
-            <label style="display:flex;align-items:center;gap:8px;text-transform:none;letter-spacing:0;font-size:13px;color:var(--text);margin:0">
-              <input type="checkbox" id="s-smtp-starttls" checked style="width:auto"> STARTTLS
-            </label>
+            <label class="inline-check"><input type="checkbox" id="s-smtp-ssl" style="width:auto"> SSL</label>
+            <label class="inline-check"><input type="checkbox" id="s-smtp-starttls" checked style="width:auto"> STARTTLS</label>
           </div>
           <div class="field full">
-            <label>Username</label>
+            <label>Username / Login Email</label>
             <input type="email" id="s-smtp-user" placeholder="you@gmail.com" autocomplete="off">
           </div>
           <div class="field full">
@@ -375,31 +518,60 @@
             <input type="email" id="s-from-email" placeholder="you@company.com" autocomplete="off">
           </div>
         </div>
-        <div style="padding:0 20px 16px">
-          <button class="btn" id="btn-test-smtp" onclick="testSmtp()">Test Connection</button>
-          <span id="smtp-test-result" style="margin-left:10px;font-size:12px"></span>
+        <div style="padding:0 20px 16px;display:flex;align-items:center;gap:12px">
+          <button class="btn" id="btn-test-smtp" onclick="testSmtp('global')">Test Connection</button>
+          <span id="smtp-test-result" style="font-size:12px"></span>
         </div>
-        <div id="settings-env-notice" style="display:none;margin:0 20px 16px;padding:10px 12px;background:var(--yellow-dim);border:1px solid var(--yellow);border-radius:var(--radius);font-size:12px;color:#fbbf24">
+        <div id="settings-env-notice" style="display:none;margin:0 20px 16px;padding:10px 12px;background:rgba(245,158,11,.08);border:1px solid #f59e0b;border-radius:var(--radius);font-size:12px;color:#fbbf24">
           Some fields are set via environment variables and cannot be edited here.
         </div>
       </div>
-      <div class="settings-tab-body" id="tab-env" style="display:none">
-        <div style="padding:0 20px 20px">
-          <p style="color:var(--text-muted);font-size:12px;margin-bottom:14px">
-            Variables here override settings. Format: <code style="font-family:var(--font-mono);color:var(--cyan)">KEY=value</code> one per line.
-            Project vars override global ones. Real OS environment variables always take priority.
-          </p>
+
+      <!-- ── Project SMTP ── -->
+      <div class="settings-tab-body" id="tab-proj-smtp" style="display:none">
+        <div style="padding:12px 20px 0">
+          <div class="proj-smtp-notice">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            Override global SMTP for <strong id="proj-smtp-name">this project</strong>. Leave fields blank to use global defaults.
+          </div>
+        </div>
+        <div class="settings-grid">
+          <div class="field full">
+            <label>SMTP Host</label>
+            <input type="text" id="ps-smtp-host" placeholder="Blank = use global" autocomplete="off">
+          </div>
           <div class="field">
-            <label>Global .env <span style="font-size:10px;color:var(--text-muted)">(~/.scraper/.env)</span></label>
-            <textarea id="s-global-env" class="env-textarea" placeholder="SMTP_HOST=smtp.gmail.com&#10;SMTP_PORT=587&#10;SMTP_USER=you@gmail.com&#10;SMTP_PASSWORD=yourpassword"></textarea>
+            <label>Port</label>
+            <input type="number" id="ps-smtp-port" placeholder="587" min="1" max="65535">
           </div>
-          <div class="field" style="margin-top:14px" id="s-project-env-wrap">
-            <label>Project .env <span id="s-project-env-label" style="font-size:10px;color:var(--text-muted)"></span></label>
-            <textarea id="s-project-env" class="env-textarea" placeholder="# Project-specific overrides&#10;SMTP_USER=project@company.com"></textarea>
+          <div class="field" style="display:flex;align-items:center;gap:10px;padding-top:20px">
+            <label class="inline-check"><input type="checkbox" id="ps-smtp-ssl" style="width:auto"> SSL</label>
+            <label class="inline-check"><input type="checkbox" id="ps-smtp-starttls" style="width:auto"> STARTTLS</label>
           </div>
+          <div class="field full">
+            <label>Username / Login Email</label>
+            <input type="email" id="ps-smtp-user" placeholder="Blank = use global" autocomplete="off">
+          </div>
+          <div class="field full">
+            <label>Password / App Password</label>
+            <input type="password" id="ps-smtp-password" placeholder="Leave blank to keep existing" autocomplete="new-password">
+          </div>
+          <div class="field">
+            <label>From Name</label>
+            <input type="text" id="ps-from-name" placeholder="Blank = use global" autocomplete="off">
+          </div>
+          <div class="field">
+            <label>From Email</label>
+            <input type="email" id="ps-from-email" placeholder="Blank = use global" autocomplete="off">
+          </div>
+        </div>
+        <div style="padding:0 20px 16px;display:flex;align-items:center;gap:12px">
+          <button class="btn" id="btn-test-proj-smtp" onclick="testSmtp('project')">Test Project SMTP</button>
+          <span id="proj-smtp-test-result" style="font-size:12px"></span>
         </div>
       </div>
 
+      <!-- ── Sending ── -->
       <div class="settings-tab-body" id="tab-sending" style="display:none">
         <div class="settings-grid">
           <div class="field">
@@ -423,10 +595,225 @@
           </div>
         </div>
       </div>
+
+      <!-- ── Scripts ── -->
+      <div class="settings-tab-body" id="tab-scripts" style="display:none">
+        <div class="scripts-toolbar">
+          <span style="font-size:13px;color:var(--text-muted)">Saved email templates for this project</span>
+          <button class="btn primary" onclick="openScriptEditor()">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            New Script
+          </button>
+        </div>
+        <div id="scripts-list"></div>
+        <!-- Inline editor -->
+        <div id="script-editor" class="script-editor" style="display:none">
+          <div class="script-editor-header">
+            <span id="script-editor-title" style="font-weight:600;font-size:13px">New Script</span>
+            <button class="btn" onclick="closeScriptEditor()">✕</button>
+          </div>
+          <div style="padding:0 20px 16px;display:flex;flex-direction:column;gap:10px">
+            <div class="field full">
+              <label>Script Name</label>
+              <input type="text" id="se-name" placeholder="e.g. Cold Outreach, Follow-up…">
+            </div>
+            <div class="field full">
+              <label>Subject</label>
+              <input type="text" id="se-subject" placeholder="Email subject line">
+            </div>
+            <div class="field full">
+              <label>Body</label>
+              <textarea id="se-body" class="email-textarea" placeholder="Hi {{first_name}},&#10;&#10;…"></textarea>
+            </div>
+            <div style="display:flex;gap:8px;justify-content:flex-end">
+              <button class="btn" onclick="closeScriptEditor()">Cancel</button>
+              <button class="btn primary" onclick="saveScript()">Save Script</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Sequences ── -->
+      <div class="settings-tab-body" id="tab-sequences" style="display:none">
+        <div class="scripts-toolbar">
+          <span style="font-size:13px;color:var(--text-muted)">Auto follow-up sequences triggered by call/email outcomes</span>
+          <button class="btn primary" onclick="openSeqEditor()">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            New Sequence
+          </button>
+        </div>
+        <div id="sequences-list"></div>
+        <div id="seq-editor" class="script-editor" style="display:none">
+          <div class="script-editor-header">
+            <span id="seq-editor-title" style="font-weight:600;font-size:13px">New Sequence</span>
+            <button class="btn" onclick="closeSeqEditor()">✕</button>
+          </div>
+          <div style="padding:0 20px 16px;display:flex;flex-direction:column;gap:10px">
+            <div class="row">
+              <div class="field full">
+                <label>Sequence Name</label>
+                <input type="text" id="seq-name" placeholder="e.g. Cold Outreach, Interested Follow-up…">
+              </div>
+            </div>
+            <div class="field full">
+              <label>Auto-trigger</label>
+              <select id="seq-trigger"></select>
+              <div class="field-hint">Leads are auto-enrolled when this event occurs</div>
+            </div>
+            <div style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--text-muted);margin-top:6px">Steps</div>
+            <div id="seq-steps"></div>
+            <button class="btn" onclick="addSeqStep()" style="align-self:flex-start">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              Add Step
+            </button>
+            <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:4px">
+              <button class="btn" onclick="closeSeqEditor()">Cancel</button>
+              <button class="btn primary" onclick="saveSeq()">Save Sequence</button>
+            </div>
+          </div>
+        </div>
+        <div style="padding:12px 20px;border-top:1px solid var(--border);margin-top:8px">
+          <button class="btn primary" id="btn-process-sequences" onclick="processSequences()">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.6"/></svg>
+            Process Due Follow-ups Now
+          </button>
+          <span id="seq-process-result" style="font-size:12px;margin-left:10px;color:var(--text-muted)"></span>
+        </div>
+      </div>
+
+      <!-- ── AI ── -->
+      <div class="settings-tab-body" id="tab-ai" style="display:none">
+        <div class="settings-grid">
+          <div class="field full">
+            <label>Anthropic API Key</label>
+            <input type="password" id="s-anthropic-key" placeholder="sk-ant-…" autocomplete="new-password">
+            <div class="field-hint">Used for AI-powered query generation in scrape jobs. Get one at console.anthropic.com</div>
+          </div>
+          <div class="field full">
+            <label>Google Maps API Key</label>
+            <input type="password" id="s-maps-key" placeholder="AIza…" autocomplete="new-password">
+            <div class="field-hint">Optional — enables Google Places API for Maps scraping. Without it, DDG fallback is used. Get one at console.cloud.google.com</div>
+          </div>
+          <div class="field full">
+            <label>App Base URL</label>
+            <input type="text" id="s-base-url" placeholder="http://localhost:7337" autocomplete="off">
+            <div class="field-hint">Used for unsubscribe links in emails. Set to your public URL in production.</div>
+          </div>
+        </div>
+        <div style="padding:0 20px 16px">
+          <div style="padding:12px;background:rgba(99,102,241,.08);border:1px solid rgba(99,102,241,.3);border-radius:var(--radius);font-size:12px;color:#a5b4fc">
+            With an API key, the scrape modal will show an "AI-powered queries" toggle that uses Claude Haiku to generate smarter, more targeted search queries for your niche and location.
+          </div>
+        </div>
+        <div style="padding:0 20px 20px;border-top:1px solid var(--border);margin-top:4px">
+          <div style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--text-muted);margin-bottom:12px;padding-top:16px">Danger Zone</div>
+          <div style="display:flex;align-items:center;gap:12px;padding:14px;border:1px solid rgba(239,68,68,.3);border-radius:var(--radius)">
+            <div style="flex:1">
+              <div style="font-size:13px;font-weight:500;color:var(--text)">Clear All Leads</div>
+              <div style="font-size:12px;color:var(--text-muted);margin-top:2px">Delete all leads, email logs, and activity for the current project. This cannot be undone.</div>
+            </div>
+            <button class="btn danger" onclick="resetAllLeads()">Reset Leads</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── IMAP (Reply Detection) ── -->
+      <div class="settings-tab-body" id="tab-imap" style="display:none">
+        <div class="settings-grid">
+          <div class="field full">
+            <label>IMAP Host</label>
+            <input type="text" id="s-imap-host" placeholder="imap.gmail.com" autocomplete="off">
+          </div>
+          <div class="field">
+            <label>Port</label>
+            <input type="number" id="s-imap-port" value="993">
+          </div>
+          <div class="field" style="display:flex;align-items:center;gap:10px;padding-top:20px">
+            <label class="inline-check"><input type="checkbox" id="s-imap-ssl" checked style="width:auto"> SSL</label>
+          </div>
+          <div class="field full">
+            <label>IMAP Username</label>
+            <input type="email" id="s-imap-user" placeholder="you@gmail.com" autocomplete="off">
+          </div>
+          <div class="field full">
+            <label>IMAP Password / App Password</label>
+            <input type="password" id="s-imap-password" placeholder="Leave blank to keep existing" autocomplete="new-password">
+          </div>
+          <div class="field">
+            <label>Folder</label>
+            <input type="text" id="s-imap-folder" placeholder="INBOX" value="INBOX">
+          </div>
+          <div class="field">
+            <label>Check Interval (minutes)</label>
+            <input type="number" id="s-imap-interval" value="10" min="1" max="60">
+          </div>
+        </div>
+        <div style="padding:0 20px 16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+          <button class="btn success" onclick="imapStart()">Start Polling</button>
+          <button class="btn danger" onclick="imapStop()">Stop</button>
+          <span id="imap-status-label" style="font-size:12px;color:var(--text-muted)">Not running</span>
+        </div>
+        <div style="padding:0 20px 16px">
+          <div style="padding:10px 12px;background:rgba(34,197,94,.06);border:1px solid rgba(34,197,94,.2);border-radius:var(--radius);font-size:12px;color:#4ade80;line-height:1.6">
+            When running, polls your inbox every N minutes and auto-detects replies from leads. Replies move the lead to <strong>Warm</strong> status and log the activity.
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Webhooks ── -->
+      <div class="settings-tab-body" id="tab-webhooks" style="display:none">
+        <div style="padding:16px 20px 0">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+            <span style="font-size:12px;color:var(--text-muted)">POST JSON to a URL when events happen</span>
+            <button class="btn" onclick="openWebhookEditor()">+ Add Webhook</button>
+          </div>
+          <div id="webhooks-list"><div class="dash-empty" style="padding:20px 0">No webhooks configured</div></div>
+        </div>
+        <div id="webhook-editor" style="display:none;padding:16px 20px;border-top:1px solid var(--border);margin-top:8px">
+          <div class="settings-grid">
+            <div class="field full">
+              <label>URL</label>
+              <input type="url" id="wh-url" placeholder="https://hooks.zapier.com/…" autocomplete="off">
+            </div>
+            <div class="field full">
+              <label>Event</label>
+              <select id="wh-event">
+                <option value="status_changed">Any status change</option>
+                <option value="lead_qualified">Lead qualified</option>
+                <option value="lead_replied">Lead replied</option>
+                <option value="email_opened">Email opened</option>
+                <option value="*">All events</option>
+              </select>
+            </div>
+          </div>
+          <div style="display:flex;gap:8px;margin-top:8px">
+            <button class="btn primary" onclick="saveWebhook()">Save</button>
+            <button class="btn" onclick="closeWebhookEditor()">Cancel</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Environment ── -->
+      <div class="settings-tab-body" id="tab-env" style="display:none">
+        <div style="padding:0 20px 20px">
+          <p style="color:var(--text-muted);font-size:12px;margin-bottom:14px">
+            Variables here override settings. Format: <code style="font-family:var(--mono);color:var(--cyan)">KEY=value</code> one per line.
+            Project vars override global ones. OS environment variables always take priority.
+          </p>
+          <div class="field">
+            <label>Global .env <span style="font-size:10px;color:var(--text-muted)">(~/.scraper/.env)</span></label>
+            <textarea id="s-global-env" class="env-textarea" placeholder="SMTP_HOST=smtp.gmail.com&#10;SMTP_PORT=587&#10;SMTP_USER=you@gmail.com&#10;SMTP_PASSWORD=yourpassword"></textarea>
+          </div>
+          <div class="field" style="margin-top:14px" id="s-project-env-wrap">
+            <label>Project .env <span id="s-project-env-label" style="font-size:10px;color:var(--text-muted)"></span></label>
+            <textarea id="s-project-env" class="env-textarea" placeholder="# Project-specific overrides&#10;SMTP_USER=project@company.com"></textarea>
+          </div>
+        </div>
+      </div>
     </div>
-    <div class="modal-footer">
+    <div class="modal-footer" id="settings-footer">
       <button class="btn" onclick="closeSettingsModal()">Cancel</button>
-      <button class="btn primary" onclick="saveSettings()">Save Settings</button>
+      <button class="btn primary" id="btn-save-settings" onclick="saveSettings()">Save Settings</button>
     </div>
   </div>
 </div>
@@ -453,6 +840,11 @@
           <div class="call-company" id="call-company">—</div>
           <div class="call-phone" id="call-phone" onclick="copyCallPhone()" title="Click to copy">—</div>
           <div class="call-meta" id="call-meta"></div>
+          <div class="call-contact-row" id="call-contact-row" style="display:none">
+            <span id="call-email-btn" class="call-contact-chip" onclick="callQuickEmail()" title="Quick email"></span>
+            <span id="call-website-btn" class="call-contact-chip" onclick="callOpenWebsite()" title="Open website"></span>
+          </div>
+          <div id="call-history-row" style="font-size:11px;color:var(--text-muted);margin-top:6px"></div>
         </div>
         <div class="call-outcomes">
           <button class="outcome-btn answered"       onclick="logCall('answered')">
@@ -479,6 +871,16 @@
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
             Not Interested
           </button>
+        </div>
+      </div>
+
+      <!-- Sequence enrollment suggestion (shown after outcome) -->
+      <div id="call-seq-suggest" style="display:none;padding:0 20px 10px">
+        <div class="seq-suggest-box">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.6"/></svg>
+          <span id="call-seq-suggest-text">Enroll in follow-up sequence?</span>
+          <button class="btn primary" style="font-size:11px;padding:3px 10px" id="call-seq-enroll-btn" onclick="enrollFromCall()">Enroll</button>
+          <button class="btn" style="font-size:11px;padding:3px 8px" onclick="document.getElementById('call-seq-suggest').style.display='none'">Skip</button>
         </div>
       </div>
 
@@ -586,6 +988,92 @@
     <div class="modal-footer">
       <button class="btn" onclick="closeNewProjectModal()">Cancel</button>
       <button class="btn primary" onclick="createProject()">Create Project</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Enroll in Sequence Modal ───────────────────────────────────────── -->
+<div class="modal-overlay" id="enroll-modal">
+  <div class="modal" style="width:min(400px,100%)">
+    <div class="modal-header">
+      <span class="modal-title">Enroll in Sequence</span>
+      <button class="modal-close" onclick="closeEnrollModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:13px;color:var(--text-muted);margin-bottom:14px">Choose a follow-up sequence for <strong id="enroll-lead-name"></strong>.</p>
+      <div class="field">
+        <label>Sequence</label>
+        <select id="enroll-seq-picker"></select>
+      </div>
+      <div id="enroll-seq-preview" style="margin-top:12px;font-size:12px;color:var(--text-muted)"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeEnrollModal()">Cancel</button>
+      <button class="btn primary" onclick="confirmEnroll()">Enroll</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Add Lead Modal ─────────────────────────────────────────────────── -->
+<div class="modal-overlay" id="add-lead-modal">
+  <div class="modal" style="width:min(520px,100%)">
+    <div class="modal-header">
+      <span class="modal-title">Add Lead Manually</span>
+      <button class="modal-close" onclick="closeAddLeadModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="settings-grid">
+        <div class="field">
+          <label>Company Name</label>
+          <input type="text" id="al-name" placeholder="Acme Corp" autocomplete="off">
+        </div>
+        <div class="field">
+          <label>Website</label>
+          <input type="text" id="al-website" placeholder="https://example.com" autocomplete="off">
+        </div>
+        <div class="field full">
+          <label>Email(s)</label>
+          <input type="text" id="al-email" placeholder="hello@example.com, info@example.com" autocomplete="off">
+          <div class="field-hint">Comma-separated for multiple</div>
+        </div>
+        <div class="field full">
+          <label>Phone(s)</label>
+          <input type="text" id="al-phone" placeholder="+36 1 234 5678" autocomplete="off">
+        </div>
+        <div class="field">
+          <label>Niche</label>
+          <input type="text" id="al-niche" placeholder="Event organizers" autocomplete="off">
+        </div>
+        <div class="field">
+          <label>City</label>
+          <input type="text" id="al-city" placeholder="Budapest" autocomplete="off">
+        </div>
+        <div class="field">
+          <label>Status</label>
+          <select id="al-status">
+            <option value="new">New</option>
+            <option value="contacted">Contacted</option>
+            <option value="warm">Warm</option>
+            <option value="qualified">Qualified</option>
+            <option value="rejected">Rejected</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Country</label>
+          <input type="text" id="al-country" placeholder="Hungary" autocomplete="off">
+        </div>
+        <div class="field full">
+          <label>Notes</label>
+          <textarea id="al-notes" style="min-height:60px;resize:vertical;font-family:inherit;font-size:13px" placeholder="Any notes…"></textarea>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeAddLeadModal()">Cancel</button>
+      <button class="btn primary" onclick="saveNewLead()">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Add Lead
+      </button>
     </div>
   </div>
 </div>
