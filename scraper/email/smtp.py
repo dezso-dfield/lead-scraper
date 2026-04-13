@@ -7,8 +7,10 @@ import re
 import smtplib
 import ssl
 import time
+from email.headerregistry import Address
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from email.utils import formataddr
 from typing import Callable
 
 from scraper.settings import load as load_settings
@@ -84,8 +86,10 @@ def _build_message(cfg: dict, to_email: str, subj_r: str, body_r: str, lead: dic
 
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subj_r
-    msg["From"]    = f"{from_name} <{from_email}>" if from_name else from_email
-    msg["To"]      = to_email
+    # formataddr() properly RFC-2047-encodes non-ASCII display names (e.g. "Mező Dezső")
+    # preventing SMTP servers from mangling or duplicating the address part
+    msg["From"] = formataddr((from_name, from_email)) if from_name else from_email
+    msg["To"]   = to_email
     msg.attach(MIMEText(plain_body, "plain", "utf-8"))
     msg.attach(MIMEText(f"<html><body style='font-family:sans-serif;max-width:600px'>{html_body}</body></html>",
                         "html", "utf-8"))
