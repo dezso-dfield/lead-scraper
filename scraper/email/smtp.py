@@ -55,7 +55,8 @@ def _build_message(cfg: dict, to_email: str, subj_r: str, body_r: str, lead: dic
     - HTML: newlines → <br>, pixel tracking img (HTML only), linked unsubscribe footer
     """
     from_email = cfg.get("from_email", "") or cfg.get("smtp_user", "")
-    from_name  = cfg.get("from_name", "")
+    # Strip any accidental "<email>" part from the display name
+    from_name  = re.sub(r"\s*<[^>]+>", "", cfg.get("from_name", "")).strip()
     add_unsub  = cfg.get("unsubscribe_footer", True)
     base_url   = cfg.get("base_url", "http://localhost:7337").rstrip("/")
 
