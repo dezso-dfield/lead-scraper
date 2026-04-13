@@ -607,20 +607,21 @@ def _run_email_campaign(job_id: str, lead_ids: list[int], subject: str,
         emit(type="log", level="info",
              msg=f"Starting campaign: {len(leads)} leads, subject: '{subject[:60]}'")
 
-        # Pre-generate tracking tokens per lead
-        base_url = os.environ.get("BASE_URL", "http://localhost:7337")
+        # Load project-specific settings (has from_name, SMTP host, base_url etc.)
+        cfg = settings_mod.load(_active_project_id)
+        base_url = cfg.get("base_url", "http://localhost:7337").rstrip("/")
+
+        # Pre-generate tracking tokens per lead (_pixel_token stored on lead dict)
         for _lead in leads:
             _tok = uuid.uuid4().hex
             project_db.create_open_token(_lead["id"], _tok)
             _lead["_pixel_token"] = _tok
-        body_with_pixel = body + '\n<img src="' + base_url + '/api/t/{{_pixel_token}}.gif" width="1" height="1" style="display:none">'
 
         # Generate unsubscribe tokens per lead
-        base_url_unsub = settings_mod.load(_active_project_id).get("base_url", "http://localhost:7337").rstrip("/")
         for _lead in leads:
             tok = project_db.get_or_create_unsub_token(_lead["id"])
             _lead["_unsub_token"] = tok
-            _lead["_unsub_url"] = f"{base_url_unsub}/unsubscribe?token={tok}"
+            _lead["_unsub_url"] = f"{base_url}/unsubscribe?token={tok}"
 
         def on_progress(ev: dict):
             t = ev.get("type", "")
@@ -647,7 +648,7 @@ def _run_email_campaign(job_id: str, lead_ids: list[int], subject: str,
                 emit(type="log", level="dim",
                      msg=f"  Waiting {ev['seconds']}s before next email…")
 
-        send_campaign(leads, subject, body_with_pixel, stop_flag=stop_flag, on_progress=on_progress)
+        send_campaign(leads, subject, body, stop_flag=stop_flag, on_progress=on_progress, cfg=cfg)
 
         c = job["counts"]
         emit(type="log", level="success", msg="═══ Campaign Complete ═══")
@@ -697,6 +698,11 @@ def stop_email_job(job_id: str):
 @app.get("/api/email/logs")
 def get_email_logs(lead_id: int | None = None):
     return _db().fetch_email_logs(lead_id=lead_id)
+
+
+@app.get("/api/email/opens")
+def get_email_opens(lead_id: int | None = None):
+    return _db().fetch_opens(lead_id=lead_id)
 
 
 # ─── Unsubscribe ──────────────────────────────────────────────────────────────

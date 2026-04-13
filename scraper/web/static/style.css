@@ -733,16 +733,21 @@ kbd {
 .project-dropdown-footer { padding: 8px; border-top: 1px solid var(--border); }
 
 /* Color picker */
-.color-picker { display: flex; gap: 8px; flex-wrap: wrap; }
+.color-picker { display: flex; gap: 10px; flex-wrap: wrap; padding: 4px 0; }
 .color-swatch {
-  width: 28px; height: 28px;
+  width: 32px; height: 32px;
   border-radius: 50%;
-  border: 2px solid transparent;
+  border: 2.5px solid transparent;
   cursor: pointer;
-  transition: all var(--transition);
+  transition: all .15s ease;
+  box-shadow: 0 1px 3px rgba(0,0,0,.2);
 }
-.color-swatch.selected { border-color: var(--text); transform: scale(1.15); }
-.color-swatch:hover { transform: scale(1.1); }
+.color-swatch.selected {
+  border-color: var(--text);
+  transform: scale(1.18);
+  box-shadow: 0 0 0 3px var(--surface), 0 0 0 5px currentColor;
+}
+.color-swatch:hover { transform: scale(1.12); }
 
 /* Env textarea */
 .env-textarea {

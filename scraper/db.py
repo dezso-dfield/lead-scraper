@@ -532,6 +532,21 @@ class Database:
             conn.commit()
         return row["lead_id"]
 
+    def fetch_opens(self, lead_id: int | None = None) -> list[dict]:
+        """Return email open records, optionally filtered by lead."""
+        conn = self._conn()
+        if lead_id:
+            rows = conn.execute(
+                "SELECT * FROM email_opens WHERE lead_id=? ORDER BY created_at DESC",
+                (lead_id,),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT eo.*, l.company_name FROM email_opens eo "
+                "LEFT JOIN leads l ON l.id=eo.lead_id ORDER BY eo.created_at DESC LIMIT 500"
+            ).fetchall()
+        return [dict(r) for r in rows]
+
     def dashboard_stats(self) -> dict:
         conn = self._conn()
         funnel = conn.execute("""

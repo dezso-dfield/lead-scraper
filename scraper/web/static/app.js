@@ -495,9 +495,46 @@ async function openDetail(id) {
         <label>Notes</label>
         <textarea class="notes" id="detail-notes" placeholder="Add notes…">${esc(l.notes || '')}</textarea>
       </div>
+      <div class="detail-field full" id="detail-email-history-wrap" style="display:none">
+        <label style="display:flex;align-items:center;gap:6px">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+          Email History
+        </label>
+        <div id="detail-email-history" style="display:flex;flex-direction:column;gap:4px;margin-top:6px"></div>
+      </div>
     `;
 
     document.getElementById('detail-modal').classList.add('open');
+
+    // Load email history with open tracking (non-blocking)
+    Promise.all([
+      GET(`/api/email/logs?lead_id=${id}`),
+      GET(`/api/email/opens?lead_id=${id}`),
+    ]).then(([logs, opens]) => {
+      const wrap = document.getElementById('detail-email-history-wrap');
+      const cont = document.getElementById('detail-email-history');
+      if (!wrap || !cont || !logs?.length) return;
+      // Build a set of open times per send window
+      const openDates = (opens || []).filter(o => o.opened_at).map(o => new Date(o.opened_at + 'Z').getTime());
+      cont.innerHTML = logs.map(log => {
+        const sent = new Date((log.sent_at || '') + 'Z').getTime();
+        // Consider opened if any open event occurred at or after this send
+        const opened = openDates.some(t => t >= sent);
+        const statusClass = log.status === 'sent' ? 'success' : log.status === 'failed' ? 'error' : 'dim';
+        return `<div style="display:flex;align-items:flex-start;gap:8px;padding:6px 8px;border-radius:6px;background:var(--surface-2);font-size:11.5px">
+          <div style="flex:1;min-width:0">
+            <div style="font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(log.subject || '(no subject)')}</div>
+            <div style="color:var(--text-muted);font-size:10.5px;margin-top:1px">${esc(log.to_email || '')} · ${formatDate(log.sent_at)}</div>
+            ${log.status === 'failed' ? `<div style="color:var(--red);font-size:10.5px">${esc(log.error || 'failed')}</div>` : ''}
+          </div>
+          <div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px;flex-shrink:0">
+            <span class="log-line ${statusClass}" style="padding:1px 6px;border-radius:3px;font-size:10px">${log.status}</span>
+            ${opened ? '<span style="display:flex;align-items:center;gap:3px;font-size:10px;color:#22c55e"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>Opened</span>' : ''}
+          </div>
+        </div>`;
+      }).join('');
+      wrap.style.display = '';
+    }).catch(() => {});
 
     // Cross-project duplicate check (non-blocking)
     GET(`/api/leads/${id}/duplicates`).then(dupes => {
@@ -1562,6 +1599,10 @@ function closeProjectDropdown() {
 function openNewProjectModal() {
   state.newProjectColor = PROJECT_COLORS[state.projects.length % PROJECT_COLORS.length];
   document.getElementById('new-project-name').value = '';
+  const dot = document.getElementById('np-preview-dot');
+  if (dot) dot.style.background = state.newProjectColor;
+  const nameEl = document.getElementById('np-preview-name');
+  if (nameEl) nameEl.textContent = 'New Project';
   // Render color picker
   const cp = document.getElementById('color-picker');
   cp.innerHTML = PROJECT_COLORS.map(c =>
@@ -1581,6 +1622,8 @@ function selectProjectColor(color) {
   document.querySelectorAll('.color-swatch').forEach(b => {
     b.classList.toggle('selected', b.style.background === color || b.style.backgroundColor === color);
   });
+  const dot = document.getElementById('np-preview-dot');
+  if (dot) dot.style.background = color;
 }
 
 async function createProject() {

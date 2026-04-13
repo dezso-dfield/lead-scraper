@@ -1003,15 +1003,22 @@
 
 <!-- ── New Project Modal ──────────────────────────────────────────────── -->
 <div class="modal-overlay" id="new-project-modal">
-  <div class="modal" style="width:min(420px,100%)">
+  <div class="modal" style="width:min(440px,100%)">
     <div class="modal-header">
       <span class="modal-title">New Project</span>
       <button class="modal-close" onclick="closeNewProjectModal()">✕</button>
     </div>
     <div class="modal-body">
+      <!-- Live preview -->
+      <div id="np-preview" style="display:flex;align-items:center;gap:10px;padding:12px 14px;background:var(--surface-2);border-radius:8px;margin-bottom:16px;border:1px solid var(--border)">
+        <span id="np-preview-dot" style="width:10px;height:10px;border-radius:50%;flex-shrink:0;background:#6366f1"></span>
+        <span id="np-preview-name" style="font-size:13px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">New Project</span>
+        <span style="font-size:11px;color:var(--text-muted);margin-left:auto;flex-shrink:0">preview</span>
+      </div>
       <div class="field">
         <label>Project Name</label>
-        <input type="text" id="new-project-name" placeholder="e.g. Budapest Events, AI Companies…" autocomplete="off">
+        <input type="text" id="new-project-name" placeholder="e.g. Budapest Events, AI Companies…" autocomplete="off"
+          oninput="document.getElementById('np-preview-name').textContent = this.value || 'New Project'">
       </div>
       <div class="field" style="margin-top:14px">
         <label>Color</label>
@@ -1020,7 +1027,10 @@
     </div>
     <div class="modal-footer">
       <button class="btn" onclick="closeNewProjectModal()">Cancel</button>
-      <button class="btn primary" onclick="createProject()">Create Project</button>
+      <button class="btn primary" onclick="createProject()">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Create Project
+      </button>
     </div>
   </div>
 </div>
