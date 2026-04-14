@@ -1207,11 +1207,25 @@ function openEmailModal() {
   document.getElementById('email-to-label').textContent =
     `To: ${state.selectedIds.size} selected leads (${withEmail.length} have email address)`;
 
-  // Reset UI
+  // If a job is already running in background, jump straight to progress view
+  if (state.currentEmailJobId) {
+    document.getElementById('email-compose-section').style.display = 'none';
+    document.getElementById('email-progress-section').style.display = '';
+    document.getElementById('btn-email-send').style.display = 'none';
+    document.getElementById('btn-email-stop').style.display = '';
+    document.getElementById('btn-email-minimize').style.display = '';
+    document.getElementById('btn-email-close').textContent = 'Running…';
+    hideCampaignBar();
+    document.getElementById('email-modal').classList.add('open');
+    return;
+  }
+
+  // Reset UI for new compose
   document.getElementById('email-compose-section').style.display = '';
   document.getElementById('email-progress-section').style.display = 'none';
   document.getElementById('btn-email-send').style.display = '';
   document.getElementById('btn-email-stop').style.display = 'none';
+  document.getElementById('btn-email-minimize').style.display = 'none';
   document.getElementById('btn-email-close').textContent = 'Cancel';
   document.getElementById('email-log').innerHTML = '';
 
@@ -1221,9 +1235,45 @@ function openEmailModal() {
 }
 
 function closeEmailModal() {
-  if (state.currentEmailJobId) return;
+  // If job running, just hide the modal (campaign keeps going in background)
+  if (state.currentEmailJobId) {
+    document.getElementById('email-modal').classList.remove('open');
+    return;
+  }
   document.getElementById('email-modal').classList.remove('open');
   state.currentEmailJobId = null;
+}
+
+function minimizeEmailCampaign() {
+  document.getElementById('email-modal').classList.remove('open');
+  showCampaignBar();
+}
+
+function reopenEmailCampaign() {
+  openEmailModal();
+}
+
+function showCampaignBar() {
+  const bar = document.getElementById('campaign-bar');
+  bar.style.display = '';
+  document.getElementById('cb-close-btn').style.display = 'none';
+}
+
+function hideCampaignBar() {
+  document.getElementById('campaign-bar').style.display = 'none';
+}
+
+function dismissCampaignBar() {
+  hideCampaignBar();
+  state.currentEmailJobId = null;
+}
+
+function _updateCampaignBar(sent, failed, skipped, total, label) {
+  const done = sent + failed + skipped;
+  const pct  = total > 0 ? Math.min(100, Math.round(done / total * 100)) : 0;
+  document.getElementById('cb-fill').style.width = pct + '%';
+  document.getElementById('cb-label').textContent = label || `Sending… ${done}/${total}`;
+  document.getElementById('cb-counts').textContent = `${sent} sent · ${failed} fail`;
 }
 
 async function sendEmailCampaign() {
@@ -1242,6 +1292,7 @@ async function sendEmailCampaign() {
   document.getElementById('email-progress-section').style.display = '';
   document.getElementById('btn-email-send').style.display = 'none';
   document.getElementById('btn-email-stop').style.display = '';
+  document.getElementById('btn-email-minimize').style.display = '';
   document.getElementById('btn-email-close').textContent = 'Running…';
   document.getElementById('email-progress-fill').style.width = '0%';
   ['email-stat-sent','email-stat-failed','email-stat-skipped'].forEach(id => {
@@ -1266,33 +1317,50 @@ function listenToEmailJob(jobId, total) {
   es.onmessage = e => {
     const msg = JSON.parse(e.data);
     if (msg.type === 'ping') return;
-    if (msg.type === 'log') {
+
+    const modalOpen = document.getElementById('email-modal').classList.contains('open');
+
+    if (msg.type === 'log' && modalOpen) {
       appendEmailLog(msg.level, msg.msg);
     }
     if (msg.type === 'progress') {
-      document.getElementById('email-stat-sent').textContent    = msg.sent    || 0;
-      document.getElementById('email-stat-failed').textContent  = msg.failed  || 0;
-      document.getElementById('email-stat-skipped').textContent = msg.skipped || 0;
-      const done = (msg.sent || 0) + (msg.failed || 0) + (msg.skipped || 0);
+      const sent    = msg.sent    || 0;
+      const failed  = msg.failed  || 0;
+      const skipped = msg.skipped || 0;
+      const done = sent + failed + skipped;
       const pct  = total > 0 ? Math.min(100, Math.round(done / total * 100)) : 0;
-      document.getElementById('email-progress-fill').style.width = pct + '%';
+      if (modalOpen) {
+        document.getElementById('email-stat-sent').textContent    = sent;
+        document.getElementById('email-stat-failed').textContent  = failed;
+        document.getElementById('email-stat-skipped').textContent = skipped;
+        document.getElementById('email-progress-fill').style.width = pct + '%';
+      }
+      // Always update the background bar
+      _updateCampaignBar(sent, failed, skipped, total, `Sending… ${done}/${total}`);
     }
     if (msg.type === 'done') {
       es.close();
       state.currentEmailJobId = null;
       document.getElementById('btn-email-stop').style.display = 'none';
+      document.getElementById('btn-email-minimize').style.display = 'none';
       document.getElementById('btn-email-close').textContent = 'Close';
       document.getElementById('email-progress-fill').style.width = '100%';
+      // Update bar to show completion
+      const c = msg.counts || {};
+      _updateCampaignBar(c.sent||0, c.failed||0, c.skipped||0, total, `Done — ${c.sent||0} sent`);
+      document.getElementById('cb-close-btn').style.display = '';
       deselectAll();
       loadLeads();
-      toast(`Campaign done — ${msg.counts?.sent || 0} sent`, 'success');
+      toast(`Campaign done — ${c.sent||0} sent`, 'success');
     }
   };
   es.onerror = () => {
     es.close();
     state.currentEmailJobId = null;
     document.getElementById('btn-email-stop').style.display = 'none';
+    document.getElementById('btn-email-minimize').style.display = 'none';
     document.getElementById('btn-email-close').textContent = 'Close';
+    document.getElementById('cb-close-btn').style.display = '';
   };
 }
 
@@ -1549,7 +1617,15 @@ function renderProjectList() {
         <span class="project-item-name">${esc(p.name)}</span>
         <span class="project-item-count">${p.lead_count ?? 0} leads</span>
       </div>
-      ${p.id !== 'default' ? `<button class="project-delete" onclick="deleteProject(event,'${esc(p.id)}')" title="Delete project">✕</button>` : ''}
+      <div class="project-item-actions">
+        ${p.id !== 'default' ? `
+          <button class="project-action-btn" onclick="openEditProjectModal(event,'${esc(p.id)}','${esc(p.name)}','${esc(p.color)}')" title="Rename">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+          </button>
+          <button class="project-action-btn del" onclick="deleteProject(event,'${esc(p.id)}')" title="Delete">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
+          </button>` : ''}
+      </div>
     </div>
   `).join('');
 }
@@ -1615,6 +1691,14 @@ function openNewProjectModal() {
 
 function closeNewProjectModal() {
   document.getElementById('new-project-modal').classList.remove('open');
+  // Reset to create mode in case it was opened for editing
+  setTimeout(() => {
+    const title = document.querySelector('#new-project-modal .modal-title');
+    if (title) title.textContent = 'New Project';
+    const btn = document.querySelector('#new-project-modal .modal-footer .btn.primary');
+    if (btn) { btn.textContent = '+ Create Project'; btn.onclick = createProject; }
+    state._editProjectId = null;
+  }, 200);
 }
 
 function selectProjectColor(color) {
@@ -1630,16 +1714,73 @@ async function createProject() {
   const name = document.getElementById('new-project-name').value.trim();
   if (!name) { document.getElementById('new-project-name').focus(); return; }
   try {
-    await api('POST', '/api/projects', { name, color: state.newProjectColor });
+    const proj = await api('POST', '/api/projects', { name, color: state.newProjectColor });
     closeNewProjectModal();
-    toast(`Project "${name}" created`, 'success');
+    // Auto-switch to new project
+    await api('POST', `/api/projects/${proj.id}/activate`, {});
+    state.activeProjectId = proj.id;
     state.selectedIds.clear();
     state.selected = null;
     await loadProjects();
     await loadLeads();
+    toast(`Project "${name}" created`, 'success');
   } catch(e) {
     toast('Failed to create project: ' + e.message, 'error');
   }
+}
+
+/* ── Edit project ────────────────────────────────────────────────── */
+state._editProjectId = null;
+state._editProjectColor = '#6366f1';
+
+function openEditProjectModal(event, projectId, currentName, currentColor) {
+  event.stopPropagation();
+  closeProjectDropdown();
+  state._editProjectId = projectId;
+  state._editProjectColor = currentColor;
+
+  // Reuse new-project-modal with different title
+  document.querySelector('#new-project-modal .modal-title').textContent = 'Rename Project';
+  document.querySelector('#new-project-modal .modal-footer .btn.primary').textContent = 'Save';
+  document.querySelector('#new-project-modal .modal-footer .btn.primary').onclick = saveEditProject;
+
+  document.getElementById('new-project-name').value = currentName;
+  const dot = document.getElementById('np-preview-dot');
+  if (dot) dot.style.background = currentColor;
+  const nameEl = document.getElementById('np-preview-name');
+  if (nameEl) nameEl.textContent = currentName;
+
+  const cp = document.getElementById('color-picker');
+  cp.innerHTML = PROJECT_COLORS.map(c =>
+    `<button class="color-swatch ${c === currentColor ? 'selected' : ''}"
+       style="background:${c}" onclick="selectProjectColor('${c}')" title="${c}"></button>`
+  ).join('');
+
+  document.getElementById('new-project-modal').classList.add('open');
+  setTimeout(() => document.getElementById('new-project-name').focus(), 50);
+}
+
+async function saveEditProject() {
+  const name = document.getElementById('new-project-name').value.trim();
+  if (!name) return;
+  try {
+    await api('PUT', `/api/projects/${state._editProjectId}`, { name, color: state._editProjectColor });
+    // Restore modal for create mode
+    _resetNewProjectModal();
+    closeNewProjectModal();
+    await loadProjects();
+    toast('Project updated', 'success');
+  } catch(e) {
+    toast('Failed to update: ' + e.message, 'error');
+  }
+}
+
+function _resetNewProjectModal() {
+  document.querySelector('#new-project-modal .modal-title').textContent = 'New Project';
+  const btn = document.querySelector('#new-project-modal .modal-footer .btn.primary');
+  btn.textContent = '+ Create Project';
+  btn.onclick = createProject;
+  state._editProjectId = null;
 }
 
 /* ── Settings — env tab ──────────────────────────────────────────────── */

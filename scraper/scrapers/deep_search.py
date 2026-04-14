@@ -54,68 +54,81 @@ def generate_queries(niche: str, location: str, use_autocomplete: bool = True) -
 
     queries: list[str] = []
 
-    # Round 1: Direct + contact signals
+    # Round 1: Direct + contact signals (highest conversion intent)
     queries += [
-        f"{niche} {city} email elérhetőség",
-        f"{niche} {city} kapcsolat",
         f"{niche} {city}",
-        f"{niche} {city} Kft",
+        f"{niche} {city} contact email",
+        f"{niche} {city} kapcsolat elérhetőség",
+        f"{niche} {city} Kft Bt",
+        f'"{niche}" {city}',
     ]
 
-    # Round 2: Autocomplete — what real people search for
+    # Round 2: Directory / listing intent
+    queries += [
+        f"{niche} {city} list",
+        f"best {niche} {city}",
+        f"top {niche} {city}",
+        f"{niche} companies {city}",
+        f"{niche} {city} cégek lista",
+    ]
+
+    # Round 3: Autocomplete — what real people search for
     if use_autocomplete:
         seeds = [
             f"{niche} {city}",
             f"{niche} {country}",
+            f"best {niche} {city}",
         ]
         for seed in seeds:
             for suggestion in _fetch_autocomplete(seed):
-                # Only keep suggestions that look like business searches
                 low = suggestion.lower()
-                if any(skip in low for skip in ["wiki", "youtube", "facebook", "instagram", "reddit", "news"]):
+                if any(skip in low for skip in ["wiki", "youtube", "facebook", "instagram", "reddit", "news", "twitter"]):
                     continue
                 queries.append(suggestion)
-            time.sleep(0.2)
+            time.sleep(0.15)
 
-    # Round 3: Translations / synonyms
+    # Round 4: Translations / synonyms
     niche_lower = niche.lower()
     translated: list[str] = []
     for key, variants in NICHE_TRANSLATIONS.items():
         if key in niche_lower:
             translated = variants
             break
-    # Also check if niche IS a Hungarian word → add English equivalents
+    # Also check if niche IS a Hungarian/translated word → add cross-language queries
     if not translated:
         for key, variants in NICHE_TRANSLATIONS.items():
             if niche_lower in key or niche_lower in " ".join(v.lower() for v in variants):
                 translated = variants
                 break
 
-    for t in translated[:3]:
+    for t in translated[:4]:
         queries += [
-            f"{t} {city} email",
             f"{t} {city}",
+            f"{t} {city} email",
         ]
 
-    # Round 4: TLD/country specific
+    # Round 5: TLD/country specific
     if is_hungarian:
         queries += [
             f"{niche} Budapest site:.hu",
             f"{niche} Magyarország elérhetőség",
-            f'rendezvényszervező cégek {city} lista',
+            f"{niche} Hungary email contact",
+            f"{niche} Magyarország cégek",
         ]
 
-    # Round 5: Broader country search
+    # Round 6: Broader country + nearby cities
     queries += [
         f"{niche} {country}",
-        f'"{niche}" {city} cégek',
+        f"{niche} {country} email",
+        f'"{niche}" {city} telefon',
     ]
 
     # Deduplicate preserving order
     seen: set[str] = set()
     result = []
     for q in queries:
-        if q not in seen:
+        q = q.strip()
+        if q and q not in seen:
             seen.add(q)
             result.append(q)
     return result
@@ -172,9 +185,9 @@ class DeepSearcher:
             self._mine_list_pages()
 
         # Round 6: Bing fallback for whatever DDG missed
-        if len(self._leads) < self.max_leads // 2:
+        if len(self._leads) < self.max_leads * 3 // 4:
             self._emit("Running Bing supplemental search…")
-            self._bing_supplemental(queries[:3])
+            self._bing_supplemental(queries[:5])
 
         return self._leads[:self.max_leads]
 
@@ -251,7 +264,7 @@ class DeepSearcher:
         from bs4 import BeautifulSoup
 
         client = get_client()
-        for url in self._list_pages[:8]:
+        for url in self._list_pages[:14]:  # mine more list pages
             resp = fetch(url, client=client)
             if not resp:
                 continue

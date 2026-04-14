@@ -2523,6 +2523,58 @@ td:has(.copy-cell) { cursor: pointer; }
 /* Compact table rows */
 #leads-table td { padding: 9px 10px !important; }
 
+/* ── Background campaign bar ─────────────────────────────────────── */
+#campaign-bar {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 500;
+  width: 340px;
+  background: var(--surface);
+  border: 1px solid var(--border-2);
+  border-radius: 10px;
+  box-shadow: 0 8px 30px rgba(0,0,0,.4);
+  overflow: hidden;
+  animation: cbSlideIn .2s ease;
+}
+@keyframes cbSlideIn {
+  from { transform: translateY(16px); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+.cb-inner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+}
+.cb-inner > svg { color: #60a5fa; flex-shrink: 0; }
+.cb-progress-wrap { flex: 1; min-width: 0; }
+.cb-label { font-size: 11.5px; font-weight: 500; margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cb-bar { height: 3px; background: var(--surface-3); border-radius: 2px; overflow: hidden; }
+.cb-fill { height: 100%; background: var(--primary); border-radius: 2px; transition: width .4s ease; }
+.cb-counts { font-size: 11px; color: var(--text-muted); flex-shrink: 0; }
+.cb-view-btn { height: 26px; padding: 0 10px; font-size: 11.5px; flex-shrink: 0; }
+.cb-close { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 14px; padding: 2px 4px; line-height: 1; flex-shrink: 0; }
+.cb-close:hover { color: var(--text); }
+
+/* ── Project list: edit/delete buttons ───────────────────────────── */
+.project-item { user-select: none; }
+.project-item-actions { display: flex; align-items: center; gap: 4px; margin-left: auto; flex-shrink: 0; opacity: 0; transition: opacity .15s; }
+.project-item:hover .project-item-actions { opacity: 1; }
+.project-action-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 3px 4px;
+  border-radius: 4px;
+  font-size: 11px;
+  line-height: 1;
+  transition: background .15s, color .15s;
+}
+.project-action-btn:hover { background: var(--surface-3); color: var(--text); }
+.project-action-btn.del:hover { color: var(--red); }
+
 /* ── Tooltip for collapsed sidebar ──────────────────────────────── */
 #sidebar.sb-collapsed .sb-item {
   position: relative;

@@ -491,11 +491,29 @@
     <div class="modal-footer">
       <button class="btn" id="btn-email-close" onclick="closeEmailModal()">Cancel</button>
       <button class="btn danger" id="btn-email-stop" style="display:none" onclick="stopEmailCampaign()">Stop</button>
+      <button class="btn" id="btn-email-minimize" style="display:none" onclick="minimizeEmailCampaign()" title="Run in background">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="14" y1="10" x2="21" y2="3"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
+        Minimize
+      </button>
       <button class="btn primary" id="btn-email-send" onclick="sendEmailCampaign()">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
         Send Campaign
       </button>
     </div>
+  </div>
+</div>
+
+<!-- ── Background Campaign Bar ────────────────────────────────────────── -->
+<div id="campaign-bar" style="display:none">
+  <div class="cb-inner">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+    <div class="cb-progress-wrap">
+      <div class="cb-label" id="cb-label">Campaign running…</div>
+      <div class="cb-bar"><div class="cb-fill" id="cb-fill"></div></div>
+    </div>
+    <div class="cb-counts" id="cb-counts"></div>
+    <button class="btn cb-view-btn" onclick="reopenEmailCampaign()">View</button>
+    <button class="cb-close" id="cb-close-btn" style="display:none" onclick="dismissCampaignBar()">✕</button>
   </div>
 </div>
 

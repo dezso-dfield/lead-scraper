@@ -54,12 +54,15 @@ SKIP_EXTENSIONS = frozenset({
 
 # Contact page path probes (multilingual)
 CONTACT_PATHS = [
-    "/contact", "/contact-us", "/contacts", "/contact.html",
-    "/kapcsolat", "/kapcsolatfelvetel",       # Hungarian
-    "/impressum", "/impressum.html",           # German
+    "/contact", "/contact-us", "/contacts", "/contact.html", "/contact.php",
+    "/kapcsolat", "/kapcsolatfelvetel", "/elerhetoseg",  # Hungarian
+    "/impressum", "/impressum.html",                      # German
     "/about", "/about-us", "/about.html",
-    "/reach-us", "/get-in-touch",
-    "/rolunk",                                 # Hungarian: about us
+    "/reach-us", "/get-in-touch", "/reach-out",
+    "/rolunk", "/cegunkrol",                              # Hungarian: about us
+    "/team", "/our-team",
+    "/info", "/information",
+    "/elerhetosegek",                                     # Hungarian: contact info
 ]
 
 CONTACT_KEYWORDS = frozenset({
@@ -79,23 +82,55 @@ HUNGARIAN_INDICATORS = frozenset({
 # Translation map for query expansion (niche -> English variants or Hungarian)
 # Keys match substrings of the user query (lowercase)
 NICHE_TRANSLATIONS: dict[str, list[str]] = {
-    "event organizer": ["rendezvényszervező", "eseményszervező"],
-    "event planning": ["rendezvénytervezés", "eseményszervezés"],
+    # Events
+    "event organizer": ["rendezvényszervező", "eseményszervező", "event management company"],
+    "event planning": ["rendezvénytervezés", "eseményszervezés", "party planning"],
     "esemény": ["event organizer", "rendezvényszervező", "eseményszervező iroda"],
-    "rendezvény": ["event organizer", "rendezvényszervező Budapest"],
-    "wedding planner": ["esküvőszervező", "esküvő szervező"],
-    "conference organizer": ["konferenciaszervező"],
-    "marketing agency": ["marketing ügynökség"],
+    "rendezvény": ["event organizer", "rendezvényszervező Budapest", "corporate events"],
+    "wedding planner": ["esküvőszervező", "esküvő szervező", "wedding coordinator"],
+    "conference organizer": ["konferenciaszervező", "conference management"],
+    "party": ["buli szervező", "party szervező Budapest", "event planner"],
+    # Marketing
+    "marketing agency": ["marketing ügynökség", "digital marketing cég", "reklámügynökség"],
+    "advertising": ["reklámügynökség", "advertising agency Budapest"],
+    "pr agency": ["PR ügynökség", "public relations Budapest"],
+    "social media": ["közösségi média marketing", "social media agency"],
+    "seo": ["SEO ügynökség Budapest", "keresőoptimalizálás"],
+    "branding": ["márkaépítés", "brand agency Budapest"],
+    # Tech
     "ai company": ["mesterséges intelligencia", "AI megoldás", "AI fejlesztő cég"],
     "ai solution": ["mesterséges intelligencia megoldás", "AI cég Hungary"],
-    "software company": ["szoftvercég", "szoftver fejlesztő"],
-    "it company": ["IT cég", "informatikai cég"],
-    "startup": ["startup Hungary", "tech startup"],
-    "restaurant": ["étterem", "vendéglő"],
-    "hotel": ["szálloda", "szálló"],
-    "catering": ["catering Budapest", "étkeztetés"],
-    "fotós": ["fotós Budapest", "photographer Budapest"],
-    "dj": ["DJ Budapest", "DJ szolgáltatás"],
+    "software company": ["szoftvercég", "szoftver fejlesztő", "software development Budapest"],
+    "it company": ["IT cég", "informatikai cég", "technology company Budapest"],
+    "startup": ["startup Hungary", "tech startup Budapest", "innovative company"],
+    "web development": ["webfejlesztés", "website development Budapest", "webdesign cég"],
+    "app development": ["alkalmazásfejlesztés", "mobile app fejlesztő"],
+    # Hospitality
+    "restaurant": ["étterem", "vendéglő", "hungarian restaurant"],
+    "hotel": ["szálloda", "szálló", "boutique hotel Budapest"],
+    "catering": ["catering Budapest", "étkeztetés", "catering service"],
+    "bar": ["bár Budapest", "cocktail bar", "nightclub"],
+    "cafe": ["kávézó", "coffee shop Budapest", "kávéház"],
+    "bakery": ["pékség", "bakery Budapest", "cukrászda"],
+    # Creative
+    "fotós": ["fotós Budapest", "photographer Budapest", "photography studio"],
+    "video": ["videókészítés", "video production Budapest", "filmkészítés"],
+    "dj": ["DJ Budapest", "DJ szolgáltatás", "music event Budapest"],
+    "design studio": ["designstúdió", "graphic design Budapest"],
+    # Professional services
+    "law firm": ["ügyvédi iroda", "law office Budapest"],
+    "accounting": ["könyvelő iroda", "accountant Budapest", "adótanácsadó"],
+    "consulting": ["tanácsadó cég", "business consulting Budapest"],
+    "real estate": ["ingatlaniroda", "ingatlan ügynökség Budapest"],
+    "insurance": ["biztosító", "insurance broker Budapest"],
+    "health": ["egészségügyi", "health clinic Budapest", "magánklinika"],
+    "dental": ["fogászat", "dental clinic Budapest"],
+    "fitness": ["fitnessterem", "gym Budapest", "fitness studio"],
+    "yoga": ["jóga studio", "yoga Budapest"],
+    # Education
+    "language school": ["nyelviskola", "language course Budapest"],
+    "tutoring": ["magántanár", "tutoring Budapest"],
+    "training": ["tréning cég", "corporate training Budapest"],
 }
 
 # Email regex patterns
